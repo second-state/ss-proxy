@@ -1,6 +1,6 @@
 use axum::{
     body::Bytes,
-    extract::{Path, State},
+    extract::{Path, RawQuery, State},
     http::{Method, StatusCode},
     response::{IntoResponse, Response},
 };
@@ -14,6 +14,7 @@ use crate::{db, proxy::HttpProxy};
 pub async fn http_proxy_handler(
     State(state): State<Arc<AppState>>,
     Path((session_id, path)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
     method: Method,
     headers: axum::http::HeaderMap,
     body: Bytes,
@@ -36,7 +37,7 @@ pub async fn http_proxy_handler(
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
 
-    // 3. Construct full path
+    // 3. Construct full path with query string
     let full_path = if path.is_empty() {
         "/".to_string()
     } else if path.starts_with('/') {
@@ -45,12 +46,19 @@ pub async fn http_proxy_handler(
         format!("/{}", path)
     };
 
+    // Append query string if present
+    let full_path_with_query = if let Some(q) = query {
+        format!("{}?{}", full_path, q)
+    } else {
+        full_path
+    };
+
     // 4. Forward request
     match state
         .http_proxy
         .forward_request(
             &session.downstream_server_url,
-            &full_path,
+            &full_path_with_query,
             method,
             headers,
             body,

@@ -38,7 +38,7 @@ impl WsProxy {
                             buffer.len()
                         );
                         if let Err(e) = downstream_write
-                            .send(TungsteniteMessage::Text(buffer.to_string()))
+                            .send(TungsteniteMessage::Text(buffer.to_string().into()))
                             .await
                         {
                             error!("Failed to forward text message to downstream: {}", e);
@@ -51,7 +51,7 @@ impl WsProxy {
                             data.len()
                         );
                         if let Err(e) = downstream_write
-                            .send(TungsteniteMessage::Binary(data.into()))
+                            .send(TungsteniteMessage::Binary(data))
                             .await
                         {
                             error!("Failed to forward binary message to downstream: {}", e);
@@ -60,9 +60,7 @@ impl WsProxy {
                     }
                     Ok(Message::Ping(data)) => {
                         info!("Client -> Downstream: Ping");
-                        if let Err(e) = downstream_write
-                            .send(TungsteniteMessage::Ping(data.into()))
-                            .await
+                        if let Err(e) = downstream_write.send(TungsteniteMessage::Ping(data)).await
                         {
                             error!("Failed to forward Ping to downstream: {}", e);
                             break;
@@ -70,9 +68,7 @@ impl WsProxy {
                     }
                     Ok(Message::Pong(data)) => {
                         info!("Client -> Downstream: Pong");
-                        if let Err(e) = downstream_write
-                            .send(TungsteniteMessage::Pong(data.into()))
-                            .await
+                        if let Err(e) = downstream_write.send(TungsteniteMessage::Pong(data)).await
                         {
                             error!("Failed to forward Pong to downstream: {}", e);
                             break;
@@ -97,7 +93,10 @@ impl WsProxy {
                 match msg {
                     Ok(TungsteniteMessage::Text(text)) => {
                         info!("Downstream -> Client: Text message ({} bytes)", text.len());
-                        if let Err(e) = client_write.send(Message::Text(text.into())).await {
+                        if let Err(e) = client_write
+                            .send(Message::Text(text.to_string().into()))
+                            .await
+                        {
                             error!("Failed to forward text message to client: {}", e);
                             break;
                         }
@@ -107,21 +106,21 @@ impl WsProxy {
                             "Downstream -> Client: Binary message ({} bytes)",
                             data.len()
                         );
-                        if let Err(e) = client_write.send(Message::Binary(data.into())).await {
+                        if let Err(e) = client_write.send(Message::Binary(data)).await {
                             error!("Failed to forward binary message to client: {}", e);
                             break;
                         }
                     }
                     Ok(TungsteniteMessage::Ping(data)) => {
                         info!("Downstream -> Client: Ping");
-                        if let Err(e) = client_write.send(Message::Ping(data.into())).await {
+                        if let Err(e) = client_write.send(Message::Ping(data)).await {
                             error!("Failed to forward Ping to client: {}", e);
                             break;
                         }
                     }
                     Ok(TungsteniteMessage::Pong(data)) => {
                         info!("Downstream -> Client: Pong");
-                        if let Err(e) = client_write.send(Message::Pong(data.into())).await {
+                        if let Err(e) = client_write.send(Message::Pong(data)).await {
                             error!("Failed to forward Pong to client: {}", e);
                             break;
                         }

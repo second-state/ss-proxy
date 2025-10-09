@@ -66,6 +66,9 @@ fn convert_to_ws_url(http_url: &str) -> String {
         http_url.replace("https://", "wss://")
     } else if http_url.starts_with("http://") {
         http_url.replace("http://", "ws://")
+    } else if http_url.starts_with("wss://") || http_url.starts_with("ws://") {
+        // Already a WebSocket URL, return as-is
+        http_url.to_string()
     } else {
         // If no protocol prefix, default to ws://
         format!("ws://{}", http_url)
@@ -87,5 +90,15 @@ mod tests {
             "wss://example.com"
         );
         assert_eq!(convert_to_ws_url("localhost:8080"), "ws://localhost:8080");
+
+        // Test WebSocket URLs are returned as-is
+        assert_eq!(
+            convert_to_ws_url("ws://localhost:8080"),
+            "ws://localhost:8080"
+        );
+        assert_eq!(
+            convert_to_ws_url("wss://echo.websocket.org"),
+            "wss://echo.websocket.org"
+        );
     }
 }
