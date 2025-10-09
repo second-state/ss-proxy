@@ -30,23 +30,32 @@ jobs:
       matrix:
         rust: [1.90.0]
 
-    # 使用服务容器提供测试依赖
-    services:
-      # httpbin 服务
-      httpbin:
-        image: kennethreitz/httpbin:latest
-        ports:
-          - 8888:80
-        options: >-
-          --health-cmd "python -c 'import requests; requests.get(\"http://localhost/get\")'"
-          --health-interval 10s
-          --health-timeout 10s
-          --health-retries 10
-          --health-start-period 20s
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Start httpbin
+        run: |
+          # 使用 httpbin 官方镜像
+          docker run -d \
+            --name httpbin \
+            -p 8888:80 \
+            kennethreitz/httpbin:latest
+
+          # 等待服务就绪
+          echo "Waiting for httpbin to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:8888/get > /dev/null 2>&1; then
+              echo "✅ httpbin is ready!"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "❌ httpbin failed to start"
+              docker logs httpbin
+              exit 1
+            fi
+            sleep 2
+          done
 
       - name: Start json-server
         run: |
@@ -154,6 +163,8 @@ jobs:
       - name: Cleanup test services
         if: always()
         run: |
+          docker stop httpbin || true
+          docker rm httpbin || true
           docker stop json-api || true
           docker rm json-api || true
           docker stop ws-echo || true
