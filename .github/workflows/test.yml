@@ -38,43 +38,72 @@ jobs:
         ports:
           - 8888:80
         options: >-
-          --health-cmd "curl -f http://localhost/get || exit 1"
+          --health-cmd "python -c 'import requests; requests.get(\"http://localhost/get\")'"
           --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          --health-start-period 5s
-
-      # JSON API 服务
-      json-api:
-        image: clue/json-server:latest
-        ports:
-          - 8889:80
-        volumes:
-          - ${{ github.workspace }}/tests/mock-data:/data:ro
-        options: >-
-          --health-cmd "wget --spider -q http://localhost/posts || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          --health-start-period 5s
-
-      # WebSocket Echo 服务
-      ws-echo:
-        image: jmalloc/echo-server:latest
-        ports:
-          - 8890:8080
-        env:
-          PORT: 8080
-        options: >-
-          --health-cmd "wget --spider -q http://localhost:8080 || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          --health-start-period 5s
+          --health-timeout 10s
+          --health-retries 10
+          --health-start-period 20s
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Start json-server
+        run: |
+          # 使用 Node.js 官方镜像运行 json-server
+          docker run -d \
+            --name json-api \
+            -p 8889:3000 \
+            -v ${{ github.workspace }}/tests/mock-data:/data:ro \
+            -w /data \
+            node:18-alpine \
+            sh -c "npm install -g json-server@0.17.4 && json-server --host 0.0.0.0 --port 3000 db.json"
+
+          # 等待服务就绪
+          echo "Waiting for json-api to be ready..."
+          for i in {1..60}; do
+            if curl -f http://localhost:8889/posts > /dev/null 2>&1; then
+              echo "✅ json-api is ready!"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "❌ json-api failed to start"
+              docker logs json-api
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Start WebSocket echo server
+        run: |
+          # 使用简单的 Python WebSocket echo server
+          cat > ws-echo.py << 'EOF'
+          import asyncio
+          import websockets
+
+          async def echo(websocket, path):
+              async for message in websocket:
+                  await websocket.send(message)
+
+          async def main():
+              async with websockets.serve(echo, "0.0.0.0", 8890):
+                  await asyncio.Future()
+
+          if __name__ == "__main__":
+              asyncio.run(main())
+          EOF
+
+          docker run -d \
+            --name ws-echo \
+            -p 8890:8890 \
+            -v ${{ github.workspace }}/ws-echo.py:/ws-echo.py:ro \
+            python:3.11-alpine \
+            sh -c "pip install websockets && python /ws-echo.py"
+
+          # 等待服务就绪
+          echo "Waiting for ws-echo to be ready..."
+          sleep 5
+          echo "✅ ws-echo started!"
 
       - name: Install Rust-stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -121,3 +150,11 @@ jobs:
           path: |
             *.log
             sessions.db
+
+      - name: Cleanup test services
+        if: always()
+        run: |
+          docker stop json-api || true
+          docker rm json-api || true
+          docker stop ws-echo || true
+          docker rm ws-echo || true
