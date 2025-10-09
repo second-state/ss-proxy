@@ -2,12 +2,11 @@
 // Tests HTTP/HTTPS and WebSocket proxy functionality
 
 use std::process::{Child, Command};
-use std::sync::OnceLock;
 use std::sync::{Mutex, Once};
 use tokio::time::Duration;
 
 static INIT: Once = Once::new();
-static SERVER_PROCESS: OnceLock<Mutex<Option<Child>>> = OnceLock::new();
+static SERVER_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
 
 /// Get test server port from environment variable or use default 8080
 fn get_test_port() -> u16 {
@@ -25,6 +24,33 @@ fn get_base_url() -> String {
 /// Get WebSocket base URL for WS tests
 fn get_ws_base_url() -> String {
     format!("ws://localhost:{}", get_test_port())
+}
+
+/// Cleanup function to kill the test server
+fn cleanup_test_server() {
+    println!("🧹 Cleaning up test server...");
+    if let Ok(mut guard) = SERVER_PROCESS.lock() {
+        if let Some(mut child) = guard.take() {
+            let pid = child.id();
+            println!("🛑 Killing server process (PID: {})", pid);
+
+            // On Unix, kill the entire process group
+            #[cfg(unix)]
+            {
+                use std::process::Command as SysCommand;
+                // Try to kill the process group first
+                let _ = SysCommand::new("kill")
+                    .args(&["-TERM", &format!("-{}", pid)])
+                    .status();
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+
+            // Then kill the process itself
+            let _ = child.kill();
+            let _ = child.wait();
+            println!("✅ Server process stopped");
+        }
+    }
 }
 
 /// Initialize test environment (start server, wait for it to be ready)
@@ -54,16 +80,22 @@ fn setup_test_server() {
         println!("🔧 Starting server on port {}", port);
 
         // Build server command with environment variables
+        // Use a process group so we can kill all children later
         let mut server_cmd = Command::new("./target/release/ss-proxy");
         server_cmd
             .args(&["--port", &port.to_string(), "--log-level", "debug"])
             .env("TEST_PORT", port.to_string()); // Ensure child process knows the port
 
+        // On Unix, set process group ID to enable killing the entire group
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            server_cmd.process_group(0);
+        }
+
         let server = server_cmd.spawn().expect("Failed to start server");
 
-        SERVER_PROCESS
-            .set(Mutex::new(Some(server)))
-            .expect("Failed to set server process");
+        *SERVER_PROCESS.lock().unwrap() = Some(server);
 
         // Wait for server to start
         println!("⏳ Waiting for server to start...");
@@ -72,16 +104,35 @@ fn setup_test_server() {
     });
 }
 
-/// Cleanup function (called when tests complete)
-/// Note: The server will run for all tests and will be cleaned up when the test process exits
-impl Drop for ServerGuard {
+/// Cleanup function to kill the server when all tests are done
+pub struct TestCleanup;
+
+impl Drop for TestCleanup {
     fn drop(&mut self) {
-        // Don't kill the server on each test - it should persist across all tests
-        // The server process will be cleaned up when the test process exits
+        // This will be called when CLEANUP_GUARD is dropped
+        // In practice, this may not be called by the test runner
+        // Use cleanup_test_server() explicitly or run ./cleanup_test_server.sh
+        cleanup_test_server();
     }
 }
 
+// Global cleanup guard - attempt to cleanup when binary exits
+// NOTE: Rust's test runner may not call this reliably
+// If tests leave the server running, manually run: ./cleanup_test_server.sh <PORT>
+#[allow(dead_code)]
+static CLEANUP_GUARD: TestCleanup = TestCleanup;
+
+// Alternative: implement a custom test macro or add cleanup to each test
+// For now, users should run cleanup_test_server.sh after tests if needed
+
 struct ServerGuard;
+
+impl Drop for ServerGuard {
+    fn drop(&mut self) {
+        // Don't kill the server on each test - it should persist across all tests
+        // Cleanup will happen via the global CLEANUP_GUARD when all tests finish
+    }
+}
 
 // =============================================================================
 // HTTP/HTTPS Proxy Tests
@@ -152,7 +203,11 @@ async fn test_http_proxy_with_query_params() {
     setup_test_server();
     let _guard = ServerGuard;
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60)) // Increase timeout to 60 seconds
+        .build()
+        .expect("Failed to build client");
+
     let response = client
         .get(format!(
             "{}/test-http/get?foo=bar&hello=world",
@@ -239,7 +294,10 @@ async fn test_websocket_echo() {
     let (mut write, mut read) = ws_stream.split();
 
     // Skip the initial greeting message from echo.websocket.org
-    let _ = tokio::time::timeout(Duration::from_secs(2), read.next()).await;
+    // Read and discard the greeting message (e.g., "Request served by ...")
+    if let Ok(Some(Ok(msg))) = tokio::time::timeout(Duration::from_secs(3), read.next()).await {
+        println!("Skipped greeting message: {:?}", msg);
+    }
 
     // Send a text message
     let test_message = "Hello WebSocket!";
@@ -248,19 +306,35 @@ async fn test_websocket_echo() {
         .await
         .expect("Failed to send message");
 
-    // Receive the echo
-    let received = tokio::time::timeout(Duration::from_secs(5), read.next())
-        .await
-        .expect("Timeout waiting for message")
-        .expect("No message received")
-        .expect("Error receiving message");
+    // Receive the echo - may need to skip additional greeting messages
+    let mut received_echo = None;
+    for _ in 0..3 {
+        let received = tokio::time::timeout(Duration::from_secs(5), read.next())
+            .await
+            .expect("Timeout waiting for message")
+            .expect("No message received")
+            .expect("Error receiving message");
 
-    match received {
-        Message::Text(text) => {
-            assert_eq!(text.to_string(), test_message);
+        match received {
+            Message::Text(text) => {
+                let text_str = text.to_string();
+                // Skip greeting messages from echo.websocket.org
+                if text_str.starts_with("Request served by") {
+                    println!("Skipping server info: {}", text_str);
+                    continue;
+                }
+                // This is our echo
+                received_echo = Some(text_str);
+                break;
+            }
+            _ => panic!("Expected text message, got: {:?}", received),
         }
-        _ => panic!("Expected text message, got: {:?}", received),
     }
+
+    assert_eq!(
+        received_echo.expect("Did not receive echo message"),
+        test_message
+    );
 }
 
 #[tokio::test]
@@ -279,7 +353,10 @@ async fn test_websocket_binary_message() {
     let (mut write, mut read) = ws_stream.split();
 
     // Skip the initial greeting message from echo.websocket.org
-    let _ = tokio::time::timeout(Duration::from_secs(2), read.next()).await;
+    // Read and discard the greeting message (e.g., "Request served by ...")
+    if let Ok(Some(Ok(msg))) = tokio::time::timeout(Duration::from_secs(3), read.next()).await {
+        println!("Skipped greeting message: {:?}", msg);
+    }
 
     // Send binary data
     let test_data = vec![1u8, 2, 3, 4, 5];
@@ -288,19 +365,38 @@ async fn test_websocket_binary_message() {
         .await
         .expect("Failed to send binary message");
 
-    // Receive the echo
-    let received = tokio::time::timeout(Duration::from_secs(5), read.next())
-        .await
-        .expect("Timeout waiting for message")
-        .expect("No message received")
-        .expect("Error receiving message");
+    // Receive the echo - may need to skip additional text messages
+    let mut received_binary = None;
+    for _ in 0..3 {
+        let received = tokio::time::timeout(Duration::from_secs(5), read.next())
+            .await
+            .expect("Timeout waiting for message")
+            .expect("No message received")
+            .expect("Error receiving message");
 
-    match received {
-        Message::Binary(data) => {
-            assert_eq!(data.to_vec(), test_data);
+        match received {
+            Message::Binary(data) => {
+                // This is our echo
+                received_binary = Some(data.to_vec());
+                break;
+            }
+            Message::Text(text) => {
+                let text_str = text.to_string();
+                // Skip greeting messages from echo.websocket.org
+                if text_str.starts_with("Request served by") {
+                    println!("Skipping server info: {}", text_str);
+                    continue;
+                }
+                panic!("Expected binary message, got unexpected text: {}", text_str);
+            }
+            _ => panic!("Expected binary message, got: {:?}", received),
         }
-        _ => panic!("Expected binary message, got: {:?}", received),
     }
+
+    assert_eq!(
+        received_binary.expect("Did not receive binary echo"),
+        test_data
+    );
 }
 
 #[tokio::test]
@@ -368,4 +464,19 @@ async fn test_websocket_multiple_messages() {
             }
         }
     }
+}
+
+// =============================================================================
+// Cleanup Test - Runs last to kill the server
+// =============================================================================
+
+/// This test should ideally run last to clean up the server
+/// Note: Test execution order is not guaranteed in Rust
+/// If server is still running after tests, use: ./cleanup_test_server.sh <PORT>
+#[tokio::test]
+async fn test_zzz_cleanup() {
+    // Use zzz_ prefix to encourage this test to run last (though not guaranteed)
+    println!("🧹 Running cleanup test...");
+    cleanup_test_server();
+    println!("✅ Cleanup test complete");
 }
