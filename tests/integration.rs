@@ -52,10 +52,14 @@ fn setup_test_server() {
         // Start the server in background
         let port = get_test_port();
         println!("🔧 Starting server on port {}", port);
-        let server = Command::new("./target/release/ss-proxy")
+
+        // Build server command with environment variables
+        let mut server_cmd = Command::new("./target/release/ss-proxy");
+        server_cmd
             .args(&["--port", &port.to_string(), "--log-level", "debug"])
-            .spawn()
-            .expect("Failed to start server");
+            .env("TEST_PORT", port.to_string()); // Ensure child process knows the port
+
+        let server = server_cmd.spawn().expect("Failed to start server");
 
         SERVER_PROCESS
             .set(Mutex::new(Some(server)))
@@ -69,17 +73,11 @@ fn setup_test_server() {
 }
 
 /// Cleanup function (called when tests complete)
+/// Note: The server will run for all tests and will be cleaned up when the test process exits
 impl Drop for ServerGuard {
     fn drop(&mut self) {
-        if let Some(mutex) = SERVER_PROCESS.get() {
-            if let Ok(mut guard) = mutex.lock() {
-                if let Some(mut process) = guard.take() {
-                    println!("🧹 Cleaning up: stopping server...");
-                    let _ = process.kill();
-                    let _ = process.wait();
-                }
-            }
-        }
+        // Don't kill the server on each test - it should persist across all tests
+        // The server process will be cleaned up when the test process exits
     }
 }
 
@@ -240,10 +238,13 @@ async fn test_websocket_echo() {
 
     let (mut write, mut read) = ws_stream.split();
 
+    // Skip the initial greeting message from echo.websocket.org
+    let _ = tokio::time::timeout(Duration::from_secs(2), read.next()).await;
+
     // Send a text message
     let test_message = "Hello WebSocket!";
     write
-        .send(Message::Text(test_message.to_string()))
+        .send(Message::Text(test_message.to_string().into()))
         .await
         .expect("Failed to send message");
 
@@ -256,7 +257,7 @@ async fn test_websocket_echo() {
 
     match received {
         Message::Text(text) => {
-            assert_eq!(text, test_message);
+            assert_eq!(text.to_string(), test_message);
         }
         _ => panic!("Expected text message, got: {:?}", received),
     }
@@ -277,10 +278,13 @@ async fn test_websocket_binary_message() {
 
     let (mut write, mut read) = ws_stream.split();
 
+    // Skip the initial greeting message from echo.websocket.org
+    let _ = tokio::time::timeout(Duration::from_secs(2), read.next()).await;
+
     // Send binary data
     let test_data = vec![1u8, 2, 3, 4, 5];
     write
-        .send(Message::Binary(test_data.clone()))
+        .send(Message::Binary(test_data.clone().into()))
         .await
         .expect("Failed to send binary message");
 
@@ -293,7 +297,7 @@ async fn test_websocket_binary_message() {
 
     match received {
         Message::Binary(data) => {
-            assert_eq!(data, test_data);
+            assert_eq!(data.to_vec(), test_data);
         }
         _ => panic!("Expected binary message, got: {:?}", received),
     }
@@ -330,26 +334,38 @@ async fn test_websocket_multiple_messages() {
 
     let (mut write, mut read) = ws_stream.split();
 
+    // Skip the initial greeting message from echo.websocket.org
+    let _ = tokio::time::timeout(Duration::from_secs(2), read.next()).await;
+
     // Send multiple messages
     let messages = vec!["Message 1", "Message 2", "Message 3"];
 
     for msg in &messages {
         write
-            .send(Message::Text(msg.to_string()))
+            .send(Message::Text(msg.to_string().into()))
             .await
             .expect("Failed to send message");
 
-        let received = tokio::time::timeout(Duration::from_secs(5), read.next())
-            .await
-            .expect("Timeout waiting for message")
-            .expect("No message received")
-            .expect("Error receiving message");
+        // Receive messages, skipping any greeting messages
+        loop {
+            let received = tokio::time::timeout(Duration::from_secs(5), read.next())
+                .await
+                .expect("Timeout waiting for message")
+                .expect("No message received")
+                .expect("Error receiving message");
 
-        match received {
-            Message::Text(text) => {
-                assert_eq!(&text, msg);
+            match received {
+                Message::Text(text) => {
+                    let text_str = text.to_string();
+                    // Skip greeting messages from echo.websocket.org
+                    if text_str.starts_with("Request served by") {
+                        continue;
+                    }
+                    assert_eq!(&text_str, msg);
+                    break;
+                }
+                _ => panic!("Expected text message"),
             }
-            _ => panic!("Expected text message"),
         }
     }
 }
