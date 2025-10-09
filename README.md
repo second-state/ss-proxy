@@ -1,120 +1,402 @@
 # ss-proxy
 
-一个使用 SQLite 存储会话信息的代理服务。
+A high-performance proxy server built with Rust, supporting HTTP/HTTPS and WebSocket protocol forwarding, using SQLite database to manage sessions and downstream server information.
 
-## 数据库初始化
+- [ss-proxy](#ss-proxy)
+  - [📋 System Requirements](#-system-requirements)
+  - [✨ Features](#-features)
+  - [📦 Quick Start](#-quick-start)
+    - [1. Clone the Project](#1-clone-the-project)
+    - [2. Initialize Database](#2-initialize-database)
+    - [Method 1: Using Shell Script (Recommended)](#method-1-using-shell-script-recommended)
+    - [Method 2: Using sqlite3 Command Directly](#method-2-using-sqlite3-command-directly)
+  - [Database Structure](#database-structure)
+    - [sessions Table](#sessions-table)
+    - [Indexes](#indexes)
+  - [Common Database Operations](#common-database-operations)
+    - [Interactive Operations (Recommended)](#interactive-operations-recommended)
+    - [Using SQL Files (Recommended for Batch Operations)](#using-sql-files-recommended-for-batch-operations)
+    - [Single-Line Commands (Simple Queries)](#single-line-commands-simple-queries)
+  - [🚀 Running the Proxy Server](#-running-the-proxy-server)
+    - [Command Line Arguments](#command-line-arguments)
+      - [Available Parameters](#available-parameters)
+      - [Usage Examples](#usage-examples)
+    - [Configuration Priority](#configuration-priority)
+    - [Build and Run](#build-and-run)
+  - [📖 Usage Examples](#-usage-examples)
+    - [1. HTTP/HTTPS Proxy](#1-httphttps-proxy)
+    - [2. WebSocket Proxy](#2-websocket-proxy)
+    - [3. Health Check](#3-health-check)
+  - [🔧 Routing Rules](#-routing-rules)
+  - [🛡️ Server Status](#️-server-status)
+  - [📊 Error Handling](#-error-handling)
+  - [🧪 Testing](#-testing)
+  - [📝 Logging](#-logging)
+  - [🛠️ Development Guide](#️-development-guide)
+    - [Code Linting and Formatting](#code-linting-and-formatting)
+    - [Common Commands](#common-commands)
 
-### 方式 1：使用 Shell 脚本（推荐）
+## 📋 System Requirements
+
+- **Rust**: 1.90.0+ (supports Edition 2024)
+- **SQLite**: 3.x
+- **Operating System**: Linux / macOS / Windows
+
+> **Note**: The project uses `rust-toolchain.toml` to automatically manage the Rust version. When you first clone the project, `rustup` will automatically download and install Rust 1.90.0. See [RUST_TOOLCHAIN.md](./RUST_TOOLCHAIN.md) for details.
+
+## ✨ Features
+
+- 🚀 **High-Performance Async Proxy**: Built on Tokio and Axum
+- 🔄 **Protocol Support**: Supports HTTP/HTTPS and WebSocket proxying
+- 💾 **Session Management**: Uses SQLite database to store session information
+- 🎯 **Dynamic Routing**: Dynamically forwards to different downstream servers based on session_id
+- ⚡ **Connection Pooling**: Built-in database connection pool and HTTP client connection pool
+- 📊 **Status Check**: Supports downstream server status validation
+
+## 📦 Quick Start
+
+### 1. Clone the Project
 
 ```bash
-# 给脚本添加执行权限
+git clone https://github.com/second-state/ss-proxy.git
+cd ss-proxy
+```
+
+When you enter the project directory, `rustup` will automatically install Rust 1.90.0 (if not already installed).
+
+### 2. Initialize Database
+
+### Method 1: Using Shell Script (Recommended)
+
+```bash
+# Add execute permission to the script
 chmod +x init_db.sh
 
-# 执行初始化（默认创建 ./sessions.db）
+# Run initialization (creates ./sessions.db by default)
 ./init_db.sh
 
-# 或指定自定义数据库路径
+# Or specify a custom database path
 ./init_db.sh /path/to/custom.db
 ```
 
-### 方式 2：直接使用 sqlite3 命令
+### Method 2: Using sqlite3 Command Directly
 
 ```bash
-# 创建数据库并执行初始化脚本
+# Create database and execute initialization script
 sqlite3 sessions.db < migrations/init.sql
 
-# 或指定自定义路径
+# Or specify a custom path
 sqlite3 /path/to/custom.db < migrations/init.sql
 ```
 
-## 数据库结构
+## Database Structure
 
-### sessions 表
+### sessions Table
 
-| 字段名 | 类型 | 约束 | 说明 |
+| Field Name | Type | Constraint | Description |
 |--------|------|------|------|
-| `session_id` | TEXT | PRIMARY KEY | 会话ID（主键） |
-| `downstream_server_url` | TEXT | NOT NULL | 下游服务器URL |
-| `downstream_server_status` | TEXT | NOT NULL | 下游服务器状态 |
-| `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | 创建时间 |
-| `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | 更新时间 |
+| `session_id` | TEXT | PRIMARY KEY | Session ID (Primary Key) |
+| `downstream_server_url` | TEXT | NOT NULL | Downstream Server URL |
+| `downstream_server_status` | TEXT | NOT NULL | Downstream Server Status |
+| `created_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | Creation Time |
+| `updated_at` | DATETIME | DEFAULT CURRENT_TIMESTAMP | Update Time |
 
-### 索引
+### Indexes
 
-- `idx_session_status`: 基于 `downstream_server_status` 的索引
-- `idx_created_at`: 基于 `created_at` 的索引
+- `idx_session_status`: Index based on `downstream_server_status`
+- `idx_created_at`: Index based on `created_at`
 
-## 常用数据库操作
+## Common Database Operations
 
-### 交互式操作（推荐）
+### Interactive Operations (Recommended)
 
-进入 SQLite 交互式命令行：
+Enter SQLite interactive command line:
 
 ```bash
 sqlite3 sessions.db
 ```
 
-在交互式环境中执行操作：
+Execute operations in interactive environment:
 
 ```sql
--- 查询所有会话
+-- Query all sessions
 SELECT * FROM sessions;
 
--- 根据 session_id 查询
+-- Query by session_id
 SELECT * FROM sessions WHERE session_id = 'your-session-id';
 
--- 查询特定状态的会话
+-- Query sessions with specific status
 SELECT * FROM sessions WHERE downstream_server_status = 'active';
 
--- 插入数据
+-- Insert data
 INSERT INTO sessions (session_id, downstream_server_url, downstream_server_status)
 VALUES ('session-001', 'http://localhost:8080', 'active');
 
--- 更新数据
+-- Update data
 UPDATE sessions SET downstream_server_status = 'inactive'
 WHERE session_id = 'session-001';
 
--- 删除数据
+-- Delete data
 DELETE FROM sessions WHERE session_id = 'session-001';
 
--- 退出
+-- Exit
 .quit
 ```
 
-### 使用 SQL 文件（推荐用于批量操作）
+### Using SQL Files (Recommended for Batch Operations)
 
-创建 SQL 文件（例如 `query.sql`）：
+Create an SQL file (e.g., `query.sql`):
 
 ```sql
 SELECT * FROM sessions WHERE downstream_server_status = 'active';
 ```
 
-执行 SQL 文件：
+Execute the SQL file:
 
 ```bash
 sqlite3 sessions.db < query.sql
 ```
 
-### 单行命令（简单查询）
+### Single-Line Commands (Simple Queries)
 
-对于简单的只读查询，可以使用单行命令：
+For simple read-only queries, you can use single-line commands:
 
 ```bash
-# 查询所有会话（使用单引号）
+# Query all sessions (using single quotes)
 sqlite3 sessions.db 'SELECT * FROM sessions;'
 
-# 统计会话数量
+# Count sessions
 sqlite3 sessions.db 'SELECT COUNT(*) FROM sessions;'
 ```
 
-**注意**：对于包含复杂 SQL 语句（特别是带逗号的 INSERT/UPDATE 语句），建议使用交互式模式或 SQL 文件方式，以避免 shell 解析问题。
+**Note**: For complex SQL statements (especially INSERT/UPDATE statements with commas), it's recommended to use interactive mode or SQL file method to avoid shell parsing issues.
 
-## 开发
+## 🚀 Running the Proxy Server
+
+### Command Line Arguments
+
+ss-proxy supports configuration via command line arguments and environment variables:
+
+#### Available Parameters
+
+| Parameter | Short Option | Environment Variable | Default | Description |
+|------|--------|----------|--------|------|
+| `--host` | `-H` | `SS_PROXY_HOST` | `0.0.0.0` | Listening address |
+| `--port` | `-p` | `SS_PROXY_PORT` | `8080` | Listening port |
+| `--db-path` | `-d` | `SS_PROXY_DB_PATH` | `./sessions.db` | Database file path |
+| `--timeout` | `-t` | `SS_PROXY_TIMEOUT` | `30` | Request timeout (seconds) |
+| `--log-level` | `-l` | `SS_PROXY_LOG_LEVEL` | `info` | Log level (trace/debug/info/warn/error) |
+| `--help` | `-h` | - | - | Show help information |
+| `--version` | `-V` | - | - | Show version information |
+
+#### Usage Examples
+
+**1. Using Default Configuration**
 
 ```bash
-# 构建项目
+cargo run --release
+```
+
+**2. Custom Port and Database Path**
+
+```bash
+cargo run --release -- --port 9090 --db-path /data/sessions.db
+```
+
+**3. Using Short Options**
+
+```bash
+cargo run --release -- -p 9090 -d /data/sessions.db -l debug
+```
+
+**4. Configuration via Environment Variables**
+
+```bash
+export SS_PROXY_PORT=9090
+export SS_PROXY_DB_PATH=/data/sessions.db
+export SS_PROXY_LOG_LEVEL=debug
+cargo run --release
+```
+
+**5. Mixed Usage (CLI arguments have higher priority than environment variables)**
+
+```bash
+export SS_PROXY_PORT=8080
+cargo run --release -- --port 9090  # Actually uses 9090
+```
+
+**6. Running Compiled Binary Directly**
+
+```bash
+# Compile
+cargo build --release
+
+# Run
+./target/release/ss-proxy --port 9090 --log-level debug
+
+# Or using environment variables
+SS_PROXY_PORT=9090 ./target/release/ss-proxy
+```
+
+**7. View Help Information**
+
+```bash
+cargo run --release -- --help
+```
+
+### Configuration Priority
+
+Configuration loading order (from highest to lowest priority):
+1. Command line arguments
+2. Environment variables
+3. Default values
+
+### Build and Run
+
+```bash
+# Build the project
+cargo build --release
+
+# Run the server (using default configuration: 0.0.0.0:8080)
+cargo run --release
+```
+
+## 📖 Usage Examples
+
+### 1. HTTP/HTTPS Proxy
+
+Assuming there's a session in the database:
+
+```sql
+INSERT INTO sessions (session_id, downstream_server_url, downstream_server_status)
+VALUES ('my-api', 'https://httpbin.org', 'active');
+```
+
+Access the proxy:
+
+```bash
+# Forward to https://httpbin.org/get
+curl http://localhost:8080/my-api/get
+
+# Forward to https://httpbin.org/post
+curl -X POST http://localhost:8080/my-api/post -d '{"key":"value"}'
+
+# Forward to https://httpbin.org/anything/path/to/resource
+curl http://localhost:8080/my-api/anything/path/to/resource
+```
+
+### 2. WebSocket Proxy
+
+Assuming there's a session in the database:
+
+```sql
+INSERT INTO sessions (session_id, downstream_server_url, downstream_server_status)
+VALUES ('ws-session', 'ws://echo.websocket.org', 'active');
+```
+
+Connect to WebSocket:
+
+```bash
+# Test using wscat (install with: npm install -g wscat)
+wscat -c ws://localhost:8080/ws/ws-session
+
+# Send message
+> Hello WebSocket!
+< Hello WebSocket!  # Echo
+```
+
+### 3. Health Check
+
+```bash
+curl http://localhost:8080/health
+# Output: OK
+```
+
+## 🔧 Routing Rules
+
+| Path Pattern | Description | Example |
+|---------|------|------|
+| `/health` | Health check endpoint | `GET /health` |
+| `/ws/:session_id` | WebSocket proxy | `ws://localhost:8080/ws/session-001` |
+| `/:session_id/*path` | HTTP/HTTPS proxy | `http://localhost:8080/session-001/api/data` |
+
+## 🛡️ Server Status
+
+The proxy server checks the status of downstream servers and only forwards requests to servers with the following statuses:
+
+- `active`
+- `online`
+- `ready`
+
+Other statuses (such as `inactive`) will return `503 Service Unavailable`.
+
+## 📊 Error Handling
+
+| HTTP Status Code | Description |
+|------------|------|
+| `200-5xx` | Original response from downstream server |
+| `404` | session_id does not exist |
+| `503` | Downstream server unavailable (status is not active) |
+| `502` | Unable to connect to downstream server |
+
+## 🧪 Testing
+
+```bash
+# Run tests
+cargo test
+
+# View test coverage
+cargo test --verbose
+```
+
+## 📝 Logging
+
+Set environment variables to control log level:
+
+```bash
+# Detailed logging
+RUST_LOG=debug cargo run
+
+# Show errors only
+RUST_LOG=error cargo run
+
+# Default (info level)
+cargo run
+```
+
+## 🛠️ Development Guide
+
+### Code Linting and Formatting
+
+```bash
+# Code linting
+cargo clippy
+
+# Format code
+cargo fmt
+
+# Check formatting (without modifying)
+cargo fmt --check
+```
+
+### Common Commands
+
+```bash
+# Quick check (without building binary)
+cargo check
+
+# Development build
 cargo build
 
-# 运行项目
+# Release build (optimized)
+cargo build --release
+
+# Run project
 cargo run
+
+# Run tests
+cargo test
+
+# Clean build artifacts
+cargo clean
 ```
