@@ -1,10 +1,10 @@
 // Integration tests for ss-proxy server
 // Tests HTTP/HTTPS and WebSocket proxy functionality
 
-use tokio::time::Duration;
-use std::process::{Command, Child};
-use std::sync::{Once, Mutex};
+use std::process::{Child, Command};
 use std::sync::OnceLock;
+use std::sync::{Mutex, Once};
+use tokio::time::Duration;
 
 static INIT: Once = Once::new();
 static SERVER_PROCESS: OnceLock<Mutex<Option<Child>>> = OnceLock::new();
@@ -57,7 +57,8 @@ fn setup_test_server() {
             .spawn()
             .expect("Failed to start server");
 
-        SERVER_PROCESS.set(Mutex::new(Some(server)))
+        SERVER_PROCESS
+            .set(Mutex::new(Some(server)))
             .expect("Failed to set server process");
 
         // Wait for server to start
@@ -155,7 +156,10 @@ async fn test_http_proxy_with_query_params() {
 
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{}/test-http/get?foo=bar&hello=world", get_base_url()))
+        .get(format!(
+            "{}/test-http/get?foo=bar&hello=world",
+            get_base_url()
+        ))
         .send()
         .await
         .expect("Failed to send request");
@@ -222,8 +226,8 @@ async fn test_inactive_session() {
 
 #[tokio::test]
 async fn test_websocket_echo() {
+    use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::connect_async;
-    use futures_util::{StreamExt, SinkExt};
     use tokio_tungstenite::tungstenite::Message;
 
     setup_test_server();
@@ -260,8 +264,8 @@ async fn test_websocket_echo() {
 
 #[tokio::test]
 async fn test_websocket_binary_message() {
+    use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::connect_async;
-    use futures_util::{StreamExt, SinkExt};
     use tokio_tungstenite::tungstenite::Message;
 
     setup_test_server();
@@ -305,13 +309,16 @@ async fn test_websocket_session_not_found() {
     // Try to connect to non-existent session
     let result = connect_async(format!("{}/ws/nonexistent-session", get_ws_base_url())).await;
 
-    assert!(result.is_err(), "Connection should fail for non-existent session");
+    assert!(
+        result.is_err(),
+        "Connection should fail for non-existent session"
+    );
 }
 
 #[tokio::test]
 async fn test_websocket_multiple_messages() {
+    use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::connect_async;
-    use futures_util::{StreamExt, SinkExt};
     use tokio_tungstenite::tungstenite::Message;
 
     setup_test_server();
