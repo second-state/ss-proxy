@@ -151,7 +151,6 @@ jobs:
           curl -f http://localhost:8889/posts
 
           echo "Checking ws-echo (WebSocket service - checking port)..."
-          # WebSocket service cannot be checked with regular HTTP requests, check if port is listening
           if timeout 5 bash -c 'cat < /dev/null > /dev/tcp/localhost/8890'; then
             echo "✅ ws-echo port 8890 is listening"
           else
