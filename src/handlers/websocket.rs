@@ -1,7 +1,7 @@
 use axum::{
     extract::{
-        ws::{WebSocket, WebSocketUpgrade},
         Path, State,
+        ws::{WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
     response::Response,
@@ -18,7 +18,10 @@ pub async fn websocket_handler(
     Path(session_id): Path<String>,
     ws: WebSocketUpgrade,
 ) -> Result<Response, StatusCode> {
-    info!("Received WebSocket connection request: session_id={}", session_id);
+    info!(
+        "Received WebSocket connection request: session_id={}",
+        session_id
+    );
 
     // 1. Query database to get session information
     let session = match db::get_session(&pool, &session_id).await {

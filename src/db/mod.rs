@@ -1,4 +1,4 @@
-use sqlx::{sqlite::SqlitePool, Error as SqlxError};
+use sqlx::{Error as SqlxError, sqlite::SqlitePool};
 use tracing::info;
 
 use crate::models::Session;

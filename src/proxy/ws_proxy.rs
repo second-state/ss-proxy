@@ -12,15 +12,16 @@ impl WsProxy {
         client_ws: WebSocket,
         downstream_url: &str,
     ) -> Result<(), WsProxyError> {
-        info!("Establishing connection to downstream WebSocket: {}", downstream_url);
+        info!(
+            "Establishing connection to downstream WebSocket: {}",
+            downstream_url
+        );
 
         // Connect to downstream WebSocket server
-        let (downstream_ws, _) = connect_async(downstream_url)
-            .await
-            .map_err(|e| {
-                error!("Failed to connect to downstream WebSocket: {}", e);
-                WsProxyError::ConnectionFailed(e.to_string())
-            })?;
+        let (downstream_ws, _) = connect_async(downstream_url).await.map_err(|e| {
+            error!("Failed to connect to downstream WebSocket: {}", e);
+            WsProxyError::ConnectionFailed(e.to_string())
+        })?;
 
         info!("Successfully connected to downstream WebSocket");
 
@@ -32,7 +33,10 @@ impl WsProxy {
             while let Some(msg) = client_read.next().await {
                 match msg {
                     Ok(Message::Text(buffer)) => {
-                        info!("Client -> Downstream: Text message ({} bytes)", buffer.len());
+                        info!(
+                            "Client -> Downstream: Text message ({} bytes)",
+                            buffer.len()
+                        );
                         if let Err(e) = downstream_write
                             .send(TungsteniteMessage::Text(buffer.to_string()))
                             .await
@@ -42,7 +46,10 @@ impl WsProxy {
                         }
                     }
                     Ok(Message::Binary(data)) => {
-                        info!("Client -> Downstream: Binary message ({} bytes)", data.len());
+                        info!(
+                            "Client -> Downstream: Binary message ({} bytes)",
+                            data.len()
+                        );
                         if let Err(e) = downstream_write
                             .send(TungsteniteMessage::Binary(data.into()))
                             .await
@@ -96,7 +103,10 @@ impl WsProxy {
                         }
                     }
                     Ok(TungsteniteMessage::Binary(data)) => {
-                        info!("Downstream -> Client: Binary message ({} bytes)", data.len());
+                        info!(
+                            "Downstream -> Client: Binary message ({} bytes)",
+                            data.len()
+                        );
                         if let Err(e) = client_write.send(Message::Binary(data.into())).await {
                             error!("Failed to forward binary message to client: {}", e);
                             break;
@@ -153,4 +163,3 @@ pub enum WsProxyError {
     #[error("Failed to connect to downstream WebSocket: {0}")]
     ConnectionFailed(String),
 }
-

@@ -1,6 +1,6 @@
 use axum::{
-    routing::{any, get},
     Router,
+    routing::{any, get},
 };
 use clap::Parser;
 use std::{sync::Arc, time::Duration};
@@ -15,7 +15,7 @@ mod models;
 mod proxy;
 
 use config::Config;
-use handlers::{health_check, http_proxy_handler, websocket_handler, AppState};
+use handlers::{AppState, health_check, http_proxy_handler, websocket_handler};
 use proxy::HttpProxy;
 
 /// SS Proxy - HTTP/HTTPS/WebSocket Proxy Server
@@ -53,8 +53,9 @@ async fn main() -> anyhow::Result<()> {
     // Initialize logging with CLI-specified log level
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| format!("ss_proxy={},tower_http={}", log_level, log_level).into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                format!("ss_proxy={},tower_http={}", log_level, log_level).into()
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -73,7 +74,10 @@ async fn main() -> anyhow::Result<()> {
     let http_proxy = HttpProxy::new(Duration::from_secs(config.request_timeout));
 
     // Create shared state
-    let http_state = Arc::new(AppState { pool: pool.clone(), http_proxy });
+    let http_state = Arc::new(AppState {
+        pool: pool.clone(),
+        http_proxy,
+    });
     let ws_state = Arc::new(pool);
 
     // Build router
@@ -100,4 +104,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-

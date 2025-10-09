@@ -48,8 +48,7 @@ impl HttpProxy {
                 key_str,
                 "host" | "connection" | "transfer-encoding" | "content-length"
             ) {
-                if let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_str().as_bytes())
-                {
+                if let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_str().as_bytes()) {
                     if let Ok(val) = reqwest::header::HeaderValue::from_bytes(value.as_bytes()) {
                         request_headers.insert(name, val);
                     }
@@ -68,7 +67,10 @@ impl HttpProxy {
             ProxyError::RequestFailed(e.to_string())
         })?;
 
-        info!("Received response from downstream server: {}", response.status());
+        info!(
+            "Received response from downstream server: {}",
+            response.status()
+        );
 
         // Build response
         let mut builder = axum::http::Response::builder().status(response.status());
@@ -85,10 +87,12 @@ impl HttpProxy {
         })?;
 
         // Build final response
-        let final_response = builder.body(axum::body::Body::from(body_bytes)).map_err(|e| {
-            error!("Failed to build response: {}", e);
-            ProxyError::ResponseBuildFailed(e.to_string())
-        })?;
+        let final_response = builder
+            .body(axum::body::Body::from(body_bytes))
+            .map_err(|e| {
+                error!("Failed to build response: {}", e);
+                ProxyError::ResponseBuildFailed(e.to_string())
+            })?;
 
         Ok(final_response)
     }
