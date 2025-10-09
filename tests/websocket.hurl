@@ -4,7 +4,7 @@
 # =============================================================================
 # WebSocket Echo Test - Text Message
 # =============================================================================
-GET http://localhost:8080/ws/test-ws
+GET http://localhost:{{port}}/ws/test-ws
 Upgrade: websocket
 Connection: Upgrade
 Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
@@ -12,7 +12,7 @@ Sec-WebSocket-Version: 13
 HTTP 101
 [Asserts]
 header "Upgrade" == "websocket"
-header "Connection" contains "Upgrade"
+header "Connection" contains "upgrade"
 
 # Note: Due to Hurl limitations with WebSocket message testing,
 # actual WebSocket message exchange is tested in the Rust integration tests.
@@ -21,7 +21,7 @@ header "Connection" contains "Upgrade"
 # =============================================================================
 # WebSocket Error Case - Session Not Found (404)
 # =============================================================================
-GET http://localhost:8080/ws/nonexistent-session
+GET http://localhost:{{port}}/ws/nonexistent-session
 Upgrade: websocket
 Connection: Upgrade
 Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
@@ -31,7 +31,7 @@ HTTP 404
 # =============================================================================
 # WebSocket Error Case - Inactive Session (503)
 # =============================================================================
-GET http://localhost:8080/ws/test-inactive
+GET http://localhost:{{port}}/ws/test-inactive
 Upgrade: websocket
 Connection: Upgrade
 Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
