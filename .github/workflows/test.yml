@@ -1,0 +1,111 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [1.90.0]
+
+    # 使用服务容器提供测试依赖
+    services:
+      # httpbin 服务
+      httpbin:
+        image: kennethreitz/httpbin:latest
+        ports:
+          - 8888:80
+        options: >-
+          --health-cmd "curl -f http://localhost/get || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 5s
+
+      # JSON API 服务
+      json-api:
+        image: clue/json-server:latest
+        ports:
+          - 8889:80
+        volumes:
+          - ${{ github.workspace }}/tests/mock-data:/data:ro
+        options: >-
+          --health-cmd "wget --spider -q http://localhost/posts || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 5s
+
+      # WebSocket Echo 服务
+      ws-echo:
+        image: jmalloc/echo-server:latest
+        ports:
+          - 8890:8080
+        env:
+          PORT: 8080
+        options: >-
+          --health-cmd "wget --spider -q http://localhost:8080 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 5s
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Rust-stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install Hurl
+        run: |
+          VERSION="5.0.1"
+          curl -LO https://github.com/Orange-OpenSource/hurl/releases/download/${VERSION}/hurl_${VERSION}_amd64.deb
+          sudo dpkg -i hurl_${VERSION}_amd64.deb
+
+      - name: Install SQLite
+        run: sudo apt-get update && sudo apt-get install -y sqlite3
+
+      - name: Verify services are running
+        run: |
+          echo "Checking httpbin..."
+          curl -f http://localhost:8888/get
+
+          echo "Checking json-api..."
+          curl -f http://localhost:8889/posts
+
+          echo "Checking ws-echo..."
+          curl -f http://localhost:8890
+
+      - name: Run tests
+        env:
+          USE_DOCKER_SERVICES: false  # Services already running via GitHub Actions
+        run: |
+          chmod +x run_tests.sh
+          ./run_tests.sh
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-logs
+          path: |
+            *.log
+            sessions.db
