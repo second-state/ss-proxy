@@ -84,11 +84,11 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         // Health check endpoint
         .route("/health", get(health_check))
-        // WebSocket proxy: /ws/:session_id
-        .route("/ws/:session_id", get(websocket_handler))
+        // WebSocket proxy: /ws/{session_id}
+        .route("/ws/{session_id}", get(websocket_handler))
         .with_state(ws_state)
-        // HTTP/HTTPS proxy: /:session_id/*path
-        .route("/:session_id/*path", any(http_proxy_handler))
+        // HTTP/HTTPS proxy: /{session_id}/*path
+        .route("/{session_id}/*path", any(http_proxy_handler))
         .with_state(http_state)
         // Add request tracing
         .layer(TraceLayer::new_for_http());
