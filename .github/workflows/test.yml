@@ -15,6 +15,7 @@ on:
       - '.github/workflows/test.yml'
       - '**/Cargo.toml'
       - '**/*.rs'
+      - '**/*.hurl'
   pull_request:
     branches: [ main ]
 
