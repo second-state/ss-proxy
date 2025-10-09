@@ -1,0 +1,93 @@
+{
+  "posts": [
+    {
+      "id": 1,
+      "userId": 1,
+      "title": "Test Post",
+      "body": "This is a test post for integration testing"
+    },
+    {
+      "id": 2,
+      "userId": 1,
+      "title": "Another Post",
+      "body": "Another test post for ss-proxy integration tests"
+    },
+    {
+      "id": 3,
+      "userId": 2,
+      "title": "Third Post",
+      "body": "Yet another test post"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "name": "Test User",
+      "username": "testuser",
+      "email": "test@example.com",
+      "phone": "123-456-7890",
+      "website": "test.example.com"
+    },
+    {
+      "id": 2,
+      "name": "Another User",
+      "username": "anotheruser",
+      "email": "another@example.com",
+      "phone": "098-765-4321",
+      "website": "another.example.com"
+    }
+  ],
+  "comments": [
+    {
+      "id": 1,
+      "postId": 1,
+      "name": "Test Comment",
+      "email": "commenter@example.com",
+      "body": "This is a test comment"
+    },
+    {
+      "id": 2,
+      "postId": 1,
+      "name": "Another Comment",
+      "email": "another@example.com",
+      "body": "Another test comment"
+    },
+    {
+      "id": 3,
+      "postId": 2,
+      "name": "Comment on Post 2",
+      "email": "user@example.com",
+      "body": "Comment on second post"
+    }
+  ],
+  "albums": [
+    {
+      "id": 1,
+      "userId": 1,
+      "title": "Test Album"
+    }
+  ],
+  "photos": [
+    {
+      "id": 1,
+      "albumId": 1,
+      "title": "Test Photo",
+      "url": "https://via.placeholder.com/600/92c952",
+      "thumbnailUrl": "https://via.placeholder.com/150/92c952"
+    }
+  ],
+  "todos": [
+    {
+      "id": 1,
+      "userId": 1,
+      "title": "Test Todo",
+      "completed": false
+    },
+    {
+      "id": 2,
+      "userId": 1,
+      "title": "Completed Todo",
+      "completed": true
+    }
+  ]
+}

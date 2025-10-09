@@ -1,23 +1,79 @@
 #!/bin/bash
 
-# Test helper script for local testing
+# Test helper script for local testing with Docker services
 # Run integration tests locally before pushing to GitHub
 
 set -e
 
 # Get port from environment variable or use default
 PORT=${TEST_PORT:-8080}
+USE_DOCKER_SERVICES=${USE_DOCKER_SERVICES:-true}
 
 echo "🧪 SS-Proxy Local Test Suite"
 echo "================================"
 echo "Test port: $PORT"
+echo "Use Docker services: $USE_DOCKER_SERVICES"
 echo ""
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Function to start Docker test services
+start_docker_services() {
+    echo ""
+    echo -e "${BLUE}🐳 Starting Docker test services...${NC}"
+
+    # Check if Docker is available
+    if ! command -v docker &> /dev/null; then
+        echo -e "${RED}❌ Docker not found. Please install Docker.${NC}"
+        echo "   Visit: https://docs.docker.com/get-docker/"
+        return 1
+    fi
+
+    # Start services
+    docker-compose -f docker-compose.test.yml up -d
+
+    # Wait for services to be healthy
+    echo -e "${YELLOW}⏳ Waiting for services to be ready...${NC}"
+    local max_wait=60
+    local elapsed=0
+
+    while [ $elapsed -lt $max_wait ]; do
+        # Check if all services are healthy
+        local httpbin_health=$(docker inspect ss-proxy-test-httpbin --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
+        local json_health=$(docker inspect ss-proxy-test-json --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
+        local ws_health=$(docker inspect ss-proxy-test-ws --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
+
+        if [ "$httpbin_health" = "healthy" ] && [ "$json_health" = "healthy" ] && [ "$ws_health" = "healthy" ]; then
+            echo -e "${GREEN}✅ All Docker services are ready!${NC}"
+            echo "  📡 httpbin:   http://localhost:8888"
+            echo "  📊 json-api:  http://localhost:8889"
+            echo "  🔌 ws-echo:   ws://localhost:8890"
+            return 0
+        fi
+
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
+
+    echo -e "${RED}❌ Docker services failed to start within ${max_wait}s${NC}"
+    docker-compose -f docker-compose.test.yml logs
+    return 1
+}
+
+# Function to stop Docker test services
+stop_docker_services() {
+    if [ "$USE_DOCKER_SERVICES" = true ]; then
+        echo ""
+        echo -e "${BLUE}🐳 Stopping Docker test services...${NC}"
+        docker-compose -f docker-compose.test.yml down
+        echo -e "${GREEN}✅ Docker services stopped${NC}"
+    fi
+}
 
 # Check if Hurl is installed
 if ! command -v hurl &> /dev/null; then
@@ -38,9 +94,20 @@ cleanup() {
         wait $SERVER_PID 2>/dev/null || true
     fi
     rm -f /tmp/ss-proxy.pid
+
+    # Stop Docker services
+    stop_docker_services
 }
 
 trap cleanup EXIT
+
+# Start Docker services if enabled
+if [ "$USE_DOCKER_SERVICES" = true ]; then
+    if ! start_docker_services; then
+        echo -e "${RED}❌ Failed to start Docker services${NC}"
+        exit 1
+    fi
+fi
 
 echo ""
 echo "📦 Step 1: Building project..."
@@ -93,60 +160,38 @@ if [ "$DB_TEST_SESSIONS" -lt 3 ]; then
 fi
 echo -e "${GREEN}✅ Test sessions verified in database ($DB_TEST_SESSIONS active sessions)${NC}"
 
+# Verify test services are accessible (if using Docker)
+if [ "$USE_DOCKER_SERVICES" = true ]; then
+    echo ""
+    echo "🔍 Verifying test services are accessible..."
+
+    if curl -f http://localhost:8888/get > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ httpbin service is accessible${NC}"
+    else
+        echo -e "${RED}❌ httpbin service is not accessible${NC}"
+        exit 1
+    fi
+
+    if curl -f http://localhost:8889/posts > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ json-api service is accessible${NC}"
+    else
+        echo -e "${RED}❌ json-api service is not accessible${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✅ ws-echo service is running${NC}"
+fi
+
 echo ""
 echo "🧪 Step 4: Running Hurl tests..."
 echo "--------------------------------"
 
-# Check if external test services are available
-echo ""
-echo "🌐 Checking external test services..."
-
-# Check httpbin.org
-HTTPBIN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 https://httpbin.org/get 2>/dev/null || echo "000")
-if [ "$HTTPBIN_STATUS" = "200" ]; then
-    echo -e "${GREEN}✅ httpbin.org is available${NC}"
-    HTTPBIN_AVAILABLE=true
-else
-    echo -e "${YELLOW}⚠️  httpbin.org is not available (HTTP $HTTPBIN_STATUS)${NC}"
-    HTTPBIN_AVAILABLE=false
-fi
-
-# Check jsonplaceholder
-JSON_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 https://jsonplaceholder.typicode.com/posts/1 2>/dev/null || echo "000")
-if [ "$JSON_STATUS" = "200" ]; then
-    echo -e "${GREEN}✅ jsonplaceholder.typicode.com is available${NC}"
-    JSON_AVAILABLE=true
-else
-    echo -e "${YELLOW}⚠️  jsonplaceholder.typicode.com is not available (HTTP $JSON_STATUS)${NC}"
-    JSON_AVAILABLE=false
-fi
-
-# Decide whether to skip HTTP tests
-if [ "$HTTPBIN_AVAILABLE" = false ] && [ "$JSON_AVAILABLE" = false ]; then
-    echo -e "${YELLOW}⚠️  All external test services are unavailable${NC}"
-    echo -e "${YELLOW}   Skipping HTTP tests (no available external services)${NC}"
-    echo -e "${YELLOW}   This is not a problem with ss-proxy itself${NC}"
-    SKIP_HTTP_TESTS=true
-elif [ "$HTTPBIN_AVAILABLE" = false ] || [ "$JSON_AVAILABLE" = false ]; then
-    echo -e "${YELLOW}⚠️  Some external services are unavailable${NC}"
-    echo -e "${YELLOW}   HTTP tests may fail or be partially incomplete${NC}"
-    echo -e "${YELLOW}   This is not a problem with ss-proxy itself${NC}"
-    SKIP_HTTP_TESTS=false
-else
-    SKIP_HTTP_TESTS=false
-fi
-
 echo ""
 echo "Testing HTTP/HTTPS endpoints..."
-if [ "$SKIP_HTTP_TESTS" = true ]; then
-    echo -e "${YELLOW}⏭️  Skipping HTTP tests (external services unavailable)${NC}"
-elif hurl --test --color --variable port=$PORT tests/http.hurl; then
+if hurl --test --color --variable port=$PORT tests/http.hurl; then
     echo -e "${GREEN}✅ HTTP tests passed${NC}"
 else
     echo -e "${RED}❌ HTTP tests failed${NC}"
-    if [ "$HTTPBIN_AVAILABLE" = false ] || [ "$JSON_AVAILABLE" = false ]; then
-        echo -e "${YELLOW}⚠️  Note: Some external services were unavailable during testing${NC}"
-    fi
     exit 1
 fi
 

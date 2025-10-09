@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # HTTP 测试服务（替代 httpbin.org）
+  httpbin:
+    image: kennethreitz/httpbin:latest
+    container_name: ss-proxy-test-httpbin
+    ports:
+      - "8888:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/get"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - test-network
+
+  # JSON API 测试服务（替代 jsonplaceholder）
+  # 使用 json-server 提供类似的 REST API
+  json-api:
+    image: clue/json-server:latest
+    container_name: ss-proxy-test-json
+    ports:
+      - "8889:80"
+    volumes:
+      - ./tests/mock-data/db.json:/data/db.json:ro
+    command: ["-H", "0.0.0.0", "-p", "80", "/data/db.json"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/posts"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - test-network
+
+  # WebSocket Echo 服务（替代 echo.websocket.org）
+  # 使用简单的 WebSocket echo 服务器
+  ws-echo:
+    image: jmalloc/echo-server:latest
+    container_name: ss-proxy-test-ws
+    ports:
+      - "8890:8080"
+    environment:
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge
