@@ -109,10 +109,18 @@ jobs:
             python:3.11-alpine \
             sh -c "pip install websockets && python /ws-echo.py"
 
-          # 等待服务就绪
+          # 等待服务就绪 - WebSocket 服务启动很快
           echo "Waiting for ws-echo to be ready..."
-          sleep 5
-          echo "✅ ws-echo started!"
+          sleep 10
+
+          # 检查容器是否在运行
+          if docker ps | grep -q ws-echo; then
+            echo "✅ ws-echo container is running!"
+          else
+            echo "❌ ws-echo container failed to start"
+            docker logs ws-echo
+            exit 1
+          fi
 
       - name: Install Rust-stable
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -141,8 +149,15 @@ jobs:
           echo "Checking json-api..."
           curl -f http://localhost:8889/posts
 
-          echo "Checking ws-echo..."
-          curl -f http://localhost:8890
+          echo "Checking ws-echo (WebSocket service - checking port)..."
+          # WebSocket 服务不能用普通 HTTP 请求检查，检查端口是否监听
+          if timeout 5 bash -c 'cat < /dev/null > /dev/tcp/localhost/8890'; then
+            echo "✅ ws-echo port 8890 is listening"
+          else
+            echo "❌ ws-echo port 8890 is not accessible"
+            docker logs ws-echo
+            exit 1
+          fi
 
       - name: Run tests
         env:
