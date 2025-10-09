@@ -47,12 +47,10 @@ impl HttpProxy {
             if !matches!(
                 key_str,
                 "host" | "connection" | "transfer-encoding" | "content-length"
-            ) {
-                if let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_str().as_bytes()) {
-                    if let Ok(val) = reqwest::header::HeaderValue::from_bytes(value.as_bytes()) {
-                        request_headers.insert(name, val);
-                    }
-                }
+            ) && let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_str().as_bytes())
+                && let Ok(val) = reqwest::header::HeaderValue::from_bytes(value.as_bytes())
+            {
+                request_headers.insert(name, val);
             }
         }
 
