@@ -12,7 +12,7 @@ on:
       - fix-*
       - test-*
     paths:
-      - '.github/workflows/build.yml'
+      - '.github/workflows/test.yml'
       - '**/Cargo.toml'
       - '**/*.rs'
   pull_request:
