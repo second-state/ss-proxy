@@ -1,0 +1,175 @@
+name: Integration Tests
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+      - release-*
+      - feat-*
+      - ci-*
+      - refactor-*
+      - fix-*
+      - test-*
+    paths:
+      - ".github/workflows/test.yml"
+      - "**/Cargo.toml"
+      - "**/*.rs"
+      - "**/*.sh"
+      - "**/*.sql"
+      - "tests/*.hurl"
+  pull_request:
+    branches:
+      - dev
+      - main
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/**"
+      - "**/Cargo.toml"
+      - "**/*.rs"
+      - "**/*.sh"
+      - "**/*.sql"
+      - "tests/**"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # =============================================================================
+  # Hurl API Tests (Fast, HTTP/HTTPS + WebSocket handshake)
+  # =============================================================================
+  hurl-tests:
+    name: Hurl API Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.90.0
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Hurl
+        run: |
+          HURL_VERSION=5.0.1
+          curl -LO https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb
+          sudo dpkg -i hurl_${HURL_VERSION}_amd64.deb
+          hurl --version
+
+      - name: Build project
+        run: cargo build --release --verbose
+
+      - name: Initialize test database
+        run: |
+          chmod +x init_db.sh
+          ./init_db.sh
+          sqlite3 sessions.db < tests/fixtures.sql
+          echo "✅ Test database initialized"
+
+      - name: Start ss-proxy server in background
+        run: |
+          ./target/release/ss-proxy --port 8080 --log-level debug &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          echo "🚀 Server started with PID: $SERVER_PID"
+          sleep 3
+
+      - name: Wait for server to be ready
+        run: |
+          echo "⏳ Waiting for server to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:8080/health > /dev/null 2>&1; then
+              echo "✅ Server is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: Server not ready yet..."
+            sleep 1
+          done
+          echo "❌ Server failed to start"
+          exit 1
+
+      - name: Run HTTP/HTTPS tests with Hurl
+        run: |
+          echo "🧪 Running HTTP/HTTPS tests..."
+          hurl --test --color tests/http.hurl
+
+      - name: Run WebSocket handshake tests with Hurl
+        run: |
+          echo "🧪 Running WebSocket tests..."
+          hurl --test --color tests/websocket.hurl
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ ! -z "$SERVER_PID" ]; then
+            echo "🛑 Stopping server (PID: $SERVER_PID)"
+            kill $SERVER_PID || true
+          fi
+
+  # =============================================================================
+  # Rust Integration Tests (Comprehensive, includes WebSocket message exchange)
+  # =============================================================================
+  rust-integration-tests:
+    name: Rust Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.90.0
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+
+      - name: Run integration tests
+        run: |
+          echo "🧪 Running Rust integration tests..."
+          cargo test --test integration --release -- --test-threads=1 --nocapture
+        env:
+          RUST_LOG: debug
+
+  # =============================================================================
+  # Summary Job (depends on all test jobs)
+  # =============================================================================
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [hurl-tests, rust-integration-tests]
+    if: always()
+
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.hurl-tests.result }}" != "success" ] || [ "${{ needs.rust-integration-tests.result }}" != "success" ]; then
+            echo "❌ Some tests failed"
+            exit 1
+          else
+            echo "✅ All tests passed!"
+          fi
+
+
