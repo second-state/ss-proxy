@@ -37,13 +37,13 @@ jobs:
 
       - name: Start httpbin
         run: |
-          # 使用 httpbin 官方镜像
+          # Use official httpbin image
           docker run -d \
             --name httpbin \
             -p 8888:80 \
             kennethreitz/httpbin:latest
 
-          # 等待服务就绪
+          # Wait for service to be ready
           echo "Waiting for httpbin to be ready..."
           for i in {1..30}; do
             if curl -f http://localhost:8888/get > /dev/null 2>&1; then
@@ -60,7 +60,7 @@ jobs:
 
       - name: Start json-server
         run: |
-          # 使用 Node.js 官方镜像运行 json-server
+          # Use Node.js official image to run json-server
           docker run -d \
             --name json-api \
             -p 8889:3000 \
@@ -69,7 +69,7 @@ jobs:
             node:18-alpine \
             sh -c "npm install -g json-server@0.17.4 && json-server --host 0.0.0.0 --port 3000 db.json"
 
-          # 等待服务就绪
+          # Wait for service to be ready
           echo "Waiting for json-api to be ready..."
           for i in {1..60}; do
             if curl -f http://localhost:8889/posts > /dev/null 2>&1; then
@@ -86,7 +86,7 @@ jobs:
 
       - name: Start WebSocket echo server
         run: |
-          # 使用简单的 Python WebSocket echo server
+          # Use simple Python WebSocket echo server
           cat > ws-echo.py << 'EOF'
           import asyncio
           import websockets
@@ -110,11 +110,11 @@ jobs:
             python:3.11-alpine \
             sh -c "pip install websockets && python /ws-echo.py"
 
-          # 等待服务就绪 - WebSocket 服务启动很快
+          # Wait for service to be ready - WebSocket service starts quickly
           echo "Waiting for ws-echo to be ready..."
           sleep 10
 
-          # 检查容器是否在运行
+          # Check if container is running
           if docker ps | grep -q ws-echo; then
             echo "✅ ws-echo container is running!"
           else
@@ -151,7 +151,7 @@ jobs:
           curl -f http://localhost:8889/posts
 
           echo "Checking ws-echo (WebSocket service - checking port)..."
-          # WebSocket 服务不能用普通 HTTP 请求检查，检查端口是否监听
+          # WebSocket service cannot be checked with regular HTTP requests, check if port is listening
           if timeout 5 bash -c 'cat < /dev/null > /dev/tcp/localhost/8890'; then
             echo "✅ ws-echo port 8890 is listening"
           else
