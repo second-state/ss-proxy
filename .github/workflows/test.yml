@@ -16,6 +16,7 @@ on:
       - '**/Cargo.toml'
       - '**/*.rs'
       - '**/*.hurl'
+      - 'run_tests.sh'
   pull_request:
     branches: [ main ]
 
