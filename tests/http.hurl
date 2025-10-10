@@ -16,7 +16,7 @@ duration < 1000  # Should respond within 1 second
 GET http://localhost:{{port}}/test-http/get
 HTTP 200
 [Asserts]
-jsonpath "$.url" == "https://httpbin.org/get"
+jsonpath "$.url" == "http://localhost:8888/get"
 header "Content-Type" contains "application/json"
 
 # =============================================================================
@@ -42,7 +42,7 @@ Content-Type: application/json
 }
 HTTP 200
 [Asserts]
-jsonpath "$.url" == "https://httpbin.org/post"
+jsonpath "$.url" == "http://localhost:8888/post"
 jsonpath "$.json.test" == "data"
 jsonpath "$.json.number" == 42
 jsonpath "$.json.nested.key" == "value"
@@ -58,7 +58,7 @@ Content-Type: application/json
 }
 HTTP 200
 [Asserts]
-jsonpath "$.url" == "https://httpbin.org/put"
+jsonpath "$.url" == "http://localhost:8888/put"
 jsonpath "$.json.action" == "update"
 
 # =============================================================================
@@ -67,7 +67,7 @@ jsonpath "$.json.action" == "update"
 DELETE http://localhost:{{port}}/test-http/delete
 HTTP 200
 [Asserts]
-jsonpath "$.url" == "https://httpbin.org/delete"
+jsonpath "$.url" == "http://localhost:8888/delete"
 
 # =============================================================================
 # HTTP Proxy - Custom Headers Test
@@ -86,7 +86,7 @@ jsonpath "$.headers['User-Agent']" == "ss-proxy-test/1.0"
 GET http://localhost:{{port}}/test-http/anything/path/to/resource
 HTTP 200
 [Asserts]
-jsonpath "$.url" == "https://httpbin.org/anything/path/to/resource"
+jsonpath "$.url" == "http://localhost:8888/anything/path/to/resource"
 
 # =============================================================================
 # JSON API Proxy Test (jsonplaceholder)

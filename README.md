@@ -31,6 +31,14 @@ A high-performance proxy server built with Rust, supporting HTTP/HTTPS and WebSo
   - [🛡️ Server Status](#️-server-status)
   - [📊 Error Handling](#-error-handling)
   - [🧪 Testing](#-testing)
+    - [Prerequisites](#prerequisites)
+    - [Running Tests](#running-tests)
+      - [Option 1: With Docker Services (Recommended)](#option-1-with-docker-services-recommended)
+      - [Option 2: Manual Service Management](#option-2-manual-service-management)
+      - [Option 3: Individual Test Suites](#option-3-individual-test-suites)
+    - [Test Services](#test-services)
+    - [Benefits of Docker-Based Testing](#benefits-of-docker-based-testing)
+    - [CI/CD](#cicd)
   - [📝 Logging](#-logging)
   - [🛠️ Development Guide](#️-development-guide)
     - [Code Linting and Formatting](#code-linting-and-formatting)
@@ -341,13 +349,90 @@ Other statuses (such as `inactive`) will return `503 Service Unavailable`.
 
 ## 🧪 Testing
 
+### Prerequisites
+
+- **Docker and Docker Compose** (for test services)
+- **Hurl** (for API testing)
+- **Rust toolchain**
+
+### Running Tests
+
+#### Option 1: With Docker Services (Recommended)
+
+This uses local Docker containers for all test dependencies, eliminating reliance on unstable external services:
+
 ```bash
-# Run tests
+# Run all tests with Docker services (automatically starts/stops services)
+./run_tests.sh
+
+# Or with custom port
+TEST_PORT=10086 ./run_tests.sh
+```
+
+The test script will:
+1. Build the project
+2. Start Docker test services (httpbin, json-api, ws-echo)
+3. Initialize the test database
+4. Run Hurl API tests
+5. Run Rust integration tests
+6. Automatically stop services on completion
+
+#### Option 2: Manual Service Management
+
+```bash
+# Start test services
+./scripts/start-test-services.sh
+
+# Run tests (skips Docker service management)
+USE_DOCKER_SERVICES=false ./run_tests.sh
+
+# Stop test services
+./scripts/stop-test-services.sh
+```
+
+#### Option 3: Individual Test Suites
+
+```bash
+# Rust unit tests only
 cargo test
 
-# View test coverage
-cargo test --verbose
+# Rust integration tests only (includes HTTP + WebSocket tests)
+cargo test --test integration
+
+# Hurl HTTP API tests only (requires services running)
+hurl --test --variable port=8080 tests/http.hurl
 ```
+
+**Note:** WebSocket tests are only available in Rust integration tests (`tests/integration.rs`), as Hurl doesn't support WebSocket message protocol.
+
+### Test Services
+
+The test suite uses the following Docker services (all run locally):
+
+| Service | Port | Purpose | Replaces |
+|---------|------|---------|----------|
+| **httpbin** | 8888 | HTTP testing service | httpbin.org |
+| **json-api** | 8889 | REST API testing service | jsonplaceholder.typicode.com |
+| **ws-echo** | 8890 | WebSocket echo service | echo.websocket.org |
+
+All services are automatically managed by `run_tests.sh` when `USE_DOCKER_SERVICES=true` (default).
+
+### Benefits of Docker-Based Testing
+
+✅ **Stable**: No dependency on external services
+✅ **Fast**: Local network, no internet latency
+✅ **Reliable**: Consistent test environment
+✅ **Offline**: Tests work without internet connection
+✅ **CI/CD Ready**: GitHub Actions integration included
+
+### CI/CD
+
+The project includes a GitHub Actions workflow (`.github/workflows/test.yml`) that automatically:
+- Runs all tests on push/PR
+- Uses service containers for test dependencies
+- Caches Rust dependencies for faster builds
+- Runs linting and formatting checks
+- Builds binaries for multiple platforms
 
 ## 📝 Logging
 

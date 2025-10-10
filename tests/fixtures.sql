@@ -4,18 +4,21 @@
 -- Clean up existing test data (if any)
 DELETE FROM sessions WHERE session_id LIKE 'test-%';
 
--- HTTP test sessions
+-- HTTP test sessions (using local Docker services)
+-- httpbin service runs on localhost:8888
+-- json-api service runs on localhost:8889
 INSERT INTO sessions (session_id, downstream_server_url, downstream_server_status)
 VALUES
-  ('test-http', 'https://httpbin.org', 'active'),
-  ('test-json', 'https://jsonplaceholder.typicode.com', 'active');
+  ('test-http', 'http://localhost:8888', 'active'),
+  ('test-json', 'http://localhost:8889', 'active');
 
--- WebSocket test sessions
+-- WebSocket test sessions (using local Docker service)
+-- ws-echo service runs on localhost:8890
 INSERT INTO sessions (session_id, downstream_server_url, downstream_server_status)
 VALUES
-  ('test-ws', 'wss://echo.websocket.org', 'active');
+  ('test-ws', 'ws://localhost:8890', 'active');
 
 -- Inactive session for testing error cases
 INSERT INTO sessions (session_id, downstream_server_url, downstream_server_status)
 VALUES
-  ('test-inactive', 'https://httpbin.org', 'inactive');
+  ('test-inactive', 'http://localhost:8888', 'inactive');
