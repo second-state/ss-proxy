@@ -87,17 +87,40 @@ jobs:
 
       - name: Start WebSocket echo server
         run: |
-          # Use simple Python WebSocket echo server
+          # Use robust Python WebSocket echo server
           cat > ws-echo.py << 'EOF'
           import asyncio
           import websockets
+          import logging
+
+          logging.basicConfig(level=logging.INFO)
+          logger = logging.getLogger(__name__)
 
           async def echo(websocket, path):
-              async for message in websocket:
-                  await websocket.send(message)
+              logger.info(f"New WebSocket connection from {websocket.remote_address}")
+              try:
+                  async for message in websocket:
+                      # Echo back the message
+                      await websocket.send(message)
+                      logger.info(f"Echoed message: {len(message)} bytes")
+              except websockets.exceptions.ConnectionClosed:
+                  logger.info("Connection closed normally")
+              except Exception as e:
+                  logger.error(f"Error in echo handler: {e}")
+              finally:
+                  logger.info("Connection ended")
 
           async def main():
-              async with websockets.serve(echo, "0.0.0.0", 8890):
+              # Configure server with proper settings
+              async with websockets.serve(
+                  echo,
+                  "0.0.0.0",
+                  8890,
+                  ping_interval=20,
+                  ping_timeout=20,
+                  close_timeout=10
+              ):
+                  logger.info("WebSocket echo server started on port 8890")
                   await asyncio.Future()
 
           if __name__ == "__main__":
