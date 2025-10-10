@@ -199,13 +199,9 @@ else
 fi
 
 echo ""
-echo "Testing WebSocket endpoints..."
-if hurl --test --color --variable port=$PORT tests/websocket.hurl; then
-    echo -e "${GREEN}✅ WebSocket tests passed${NC}"
-else
-    echo -e "${RED}❌ WebSocket tests failed${NC}"
-    exit 1
-fi
+echo "⏭️  Skipping WebSocket Hurl tests..."
+echo "   (WebSocket protocol is fully tested in Rust integration tests)"
+echo "   (Hurl only supports HTTP/HTTPS, not WebSocket message exchange)"
 
 echo ""
 echo "🛑 Step 5: Stopping server for Rust integration tests..."

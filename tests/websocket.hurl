@@ -1,5 +1,22 @@
 # WebSocket Proxy Tests
 # Test suite for ss-proxy WebSocket proxy functionality
+#
+# ⚠️  WARNING: THIS FILE IS NOT EXECUTED IN CI/CD ⚠️
+#
+# Reason: Hurl does not support WebSocket message exchange protocol.
+# While Hurl can perform the WebSocket upgrade handshake (HTTP 101),
+# it cannot send/receive WebSocket frames or properly close connections.
+# This causes 300-second timeouts in automated tests.
+#
+# ✅ ALTERNATIVE: Complete WebSocket testing is done in Rust integration tests
+# See: tests/integration.rs
+#   - test_websocket_echo (text messages)
+#   - test_websocket_binary_message (binary messages)
+#   - test_websocket_multiple_messages (message sequences)
+#   - test_websocket_session_not_found (error handling)
+#
+# This file is kept for documentation purposes only.
+#
 
 # =============================================================================
 # WebSocket Echo Test - Text Message
