@@ -1,90 +1,65 @@
 // Integration tests for ss-proxy server
 // Tests HTTP/HTTPS and WebSocket proxy functionality
+// Each test has its own isolated server instance
 
 use std::process::{Child, Command};
-use std::sync::{Mutex, Once};
+use std::sync::atomic::{AtomicU16, Ordering};
 use tokio::time::Duration;
 
-static INIT: Once = Once::new();
-static SERVER_PROCESS: Mutex<Option<Child>> = Mutex::new(None);
+// Global port allocator to avoid conflicts between tests
+static NEXT_PORT: AtomicU16 = AtomicU16::new(8080);
 
-/// Get test server port from environment variable or use default 8080
-fn get_test_port() -> u16 {
-    std::env::var("TEST_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8080)
+/// Allocate a unique port for each test
+fn allocate_test_port() -> u16 {
+    NEXT_PORT.fetch_add(1, Ordering::SeqCst)
 }
 
-/// Get base URL for HTTP tests
-fn get_base_url() -> String {
-    format!("http://localhost:{}", get_test_port())
+/// Test server instance - automatically cleaned up when dropped
+struct TestServer {
+    process: Child,
+    port: u16,
+    db_path: String,
 }
 
-/// Get WebSocket base URL for WS tests
-fn get_ws_base_url() -> String {
-    format!("ws://localhost:{}", get_test_port())
-}
+impl TestServer {
+    /// Start a new test server on a unique port
+    async fn start() -> Self {
+        let port = allocate_test_port();
+        let db_path = format!("./test_sessions_{}.db", port);
 
-/// Cleanup function to kill the test server
-fn cleanup_test_server() {
-    println!("🧹 Cleaning up test server...");
-    if let Ok(mut guard) = SERVER_PROCESS.lock() {
-        if let Some(mut child) = guard.take() {
-            let pid = child.id();
-            println!("🛑 Killing server process (PID: {})", pid);
-
-            // On Unix, kill the entire process group
-            #[cfg(unix)]
-            {
-                use std::process::Command as SysCommand;
-                // Try to kill the process group first
-                let _ = SysCommand::new("kill")
-                    .args(&["-TERM", &format!("-{}", pid)])
-                    .status();
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-
-            // Then kill the process itself
-            let _ = child.kill();
-            let _ = child.wait();
-            println!("✅ Server process stopped");
-        }
-    }
-}
-
-/// Initialize test environment (start server, wait for it to be ready)
-fn setup_test_server() {
-    INIT.call_once(|| {
-        println!("🚀 Setting up test environment...");
+        println!("🚀 Starting isolated test server on port {} with database {}", port, db_path);
 
         // Initialize database with test data
+        let init_cmd = format!("./init_db.sh {} && sqlite3 {} < tests/fixtures.sql", db_path, db_path);
         let init_status = Command::new("sh")
             .arg("-c")
-            .arg("./init_db.sh && sqlite3 sessions.db < tests/fixtures.sql")
+            .arg(&init_cmd)
             .status()
             .expect("Failed to initialize database");
 
         assert!(init_status.success(), "Database initialization failed");
 
-        // Build the project in release mode
-        let build_status = Command::new("cargo")
-            .args(&["build", "--release"])
-            .status()
-            .expect("Failed to build project");
+        // Build the project in release mode (if not already built)
+        static BUILD_ONCE: std::sync::Once = std::sync::Once::new();
+        BUILD_ONCE.call_once(|| {
+            println!("🔨 Building project...");
+            let build_status = Command::new("cargo")
+                .args(&["build", "--release"])
+                .status()
+                .expect("Failed to build project");
+            assert!(build_status.success(), "Build failed");
+            println!("✅ Build complete");
+        });
 
-        assert!(build_status.success(), "Build failed");
-
-        // Start the server in background
-        let port = get_test_port();
-        println!("🔧 Starting server on port {}", port);
-
-        // Build server command with environment variables
-        // Use a process group so we can kill all children later
+        // Start the server in background with isolated database
         let mut server_cmd = Command::new("./target/release/ss-proxy");
         server_cmd
-            .args(&["--port", &port.to_string(), "--log-level", "debug"])
-            .env("TEST_PORT", port.to_string()); // Ensure child process knows the port
+            .args(&[
+                "--port", &port.to_string(),
+                "--db-path", &db_path,
+                "--log-level", "debug"
+            ])
+            .env("TEST_PORT", port.to_string());
 
         // On Unix, set process group ID to enable killing the entire group
         #[cfg(unix)]
@@ -93,44 +68,75 @@ fn setup_test_server() {
             server_cmd.process_group(0);
         }
 
-        let server = server_cmd.spawn().expect("Failed to start server");
+        let process = server_cmd.spawn().expect("Failed to start server");
+        let pid = process.id();
 
-        *SERVER_PROCESS.lock().unwrap() = Some(server);
+        println!("⏳ Waiting for server (PID: {}) to be ready...", pid);
 
-        // Wait for server to start
-        println!("⏳ Waiting for server to start...");
-        std::thread::sleep(std::time::Duration::from_secs(3));
-        println!("✅ Server started on port {}", port);
-    });
-}
+        // Wait for server to be ready (with health check)
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(1))
+            .build()
+            .unwrap();
 
-/// Cleanup function to kill the server when all tests are done
-pub struct TestCleanup;
+        for i in 0..30 {
+            tokio::time::sleep(Duration::from_millis(200)).await;
 
-impl Drop for TestCleanup {
-    fn drop(&mut self) {
-        // This will be called when CLEANUP_GUARD is dropped
-        // In practice, this may not be called by the test runner
-        // Use cleanup_test_server() explicitly or run ./cleanup_test_server.sh
-        cleanup_test_server();
+            if let Ok(response) = client
+                .get(format!("http://localhost:{}/health", port))
+                .send()
+                .await
+            {
+                if response.status().is_success() {
+                    println!("✅ Server ready on port {} (took {}ms)", port, i * 200);
+                    return TestServer { process, port, db_path };
+                }
+            }
+        }
+
+        panic!("Server failed to start within 6 seconds on port {}", port);
+    }
+
+    /// Get the base URL for HTTP tests
+    fn base_url(&self) -> String {
+        format!("http://localhost:{}", self.port)
+    }
+
+    /// Get the WebSocket base URL
+    fn ws_base_url(&self) -> String {
+        format!("ws://localhost:{}", self.port)
     }
 }
 
-// Global cleanup guard - attempt to cleanup when binary exits
-// NOTE: Rust's test runner may not call this reliably
-// If tests leave the server running, manually run: ./cleanup_test_server.sh <PORT>
-#[allow(dead_code)]
-static CLEANUP_GUARD: TestCleanup = TestCleanup;
-
-// Alternative: implement a custom test macro or add cleanup to each test
-// For now, users should run cleanup_test_server.sh after tests if needed
-
-struct ServerGuard;
-
-impl Drop for ServerGuard {
+impl Drop for TestServer {
     fn drop(&mut self) {
-        // Don't kill the server on each test - it should persist across all tests
-        // Cleanup will happen via the global CLEANUP_GUARD when all tests finish
+        let pid = self.process.id();
+        println!("🛑 Stopping test server (PID: {}) on port {}", pid, self.port);
+
+        // On Unix, kill the entire process group
+        #[cfg(unix)]
+        {
+            use std::process::Command as SysCommand;
+            let _ = SysCommand::new("kill")
+                .args(&["-TERM", &format!("-{}", pid)])
+                .status();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+
+        // Then kill the process itself
+        let _ = self.process.kill();
+        let _ = self.process.wait();
+
+        println!("✅ Server stopped on port {}", self.port);
+
+        // Clean up test database
+        if std::path::Path::new(&self.db_path).exists() {
+            let _ = std::fs::remove_file(&self.db_path);
+            println!("🗑️  Removed test database: {}", self.db_path);
+        }
+
+        // Small delay to ensure port is released
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
@@ -140,12 +146,12 @@ impl Drop for ServerGuard {
 
 #[tokio::test]
 async fn test_health_check() {
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
+
 
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{}/health", get_base_url()))
+        .get(format!("{}/health", server.base_url()))
         .send()
         .await
         .expect("Failed to send request");
@@ -157,12 +163,11 @@ async fn test_health_check() {
 
 #[tokio::test]
 async fn test_http_proxy_get() {
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{}/test-http/get", get_base_url()))
+        .get(format!("{}/test-http/get", server.base_url()))
         .send()
         .await
         .expect("Failed to send request");
@@ -175,8 +180,7 @@ async fn test_http_proxy_get() {
 
 #[tokio::test]
 async fn test_http_proxy_post() {
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
     let client = reqwest::Client::new();
     let payload = serde_json::json!({
@@ -185,7 +189,7 @@ async fn test_http_proxy_post() {
     });
 
     let response = client
-        .post(format!("{}/test-http/post", get_base_url()))
+        .post(format!("{}/test-http/post", server.base_url()))
         .json(&payload)
         .send()
         .await
@@ -200,18 +204,17 @@ async fn test_http_proxy_post() {
 
 #[tokio::test]
 async fn test_http_proxy_with_query_params() {
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(60)) // Increase timeout to 60 seconds
+        .timeout(Duration::from_secs(60))
         .build()
         .expect("Failed to build client");
 
     let response = client
         .get(format!(
             "{}/test-http/get?foo=bar&hello=world",
-            get_base_url()
+            server.base_url()
         ))
         .send()
         .await
@@ -226,12 +229,11 @@ async fn test_http_proxy_with_query_params() {
 
 #[tokio::test]
 async fn test_http_proxy_custom_headers() {
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{}/test-http/headers", get_base_url()))
+        .get(format!("{}/test-http/headers", server.base_url()))
         .header("X-Custom-Header", "test-value")
         .send()
         .await
@@ -245,12 +247,11 @@ async fn test_http_proxy_custom_headers() {
 
 #[tokio::test]
 async fn test_session_not_found() {
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{}/nonexistent-session/get", get_base_url()))
+        .get(format!("{}/nonexistent-session/get", server.base_url()))
         .send()
         .await
         .expect("Failed to send request");
@@ -260,12 +261,11 @@ async fn test_session_not_found() {
 
 #[tokio::test]
 async fn test_inactive_session() {
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
     let client = reqwest::Client::new();
     let response = client
-        .get(format!("{}/test-inactive/get", get_base_url()))
+        .get(format!("{}/test-inactive/get", server.base_url()))
         .send()
         .await
         .expect("Failed to send request");
@@ -283,11 +283,10 @@ async fn test_websocket_echo() {
     use tokio_tungstenite::connect_async;
     use tokio_tungstenite::tungstenite::Message;
 
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
     // Connect to WebSocket proxy
-    let (ws_stream, _) = connect_async(format!("{}/ws/test-ws", get_ws_base_url()))
+    let (ws_stream, _) = connect_async(format!("{}/ws/test-ws", server.ws_base_url()))
         .await
         .expect("Failed to connect to WebSocket");
 
@@ -322,10 +321,9 @@ async fn test_websocket_binary_message() {
     use tokio_tungstenite::connect_async;
     use tokio_tungstenite::tungstenite::Message;
 
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
-    let (ws_stream, _) = connect_async(format!("{}/ws/test-ws", get_ws_base_url()))
+    let (ws_stream, _) = connect_async(format!("{}/ws/test-ws", server.ws_base_url()))
         .await
         .expect("Failed to connect to WebSocket");
 
@@ -357,11 +355,10 @@ async fn test_websocket_binary_message() {
 async fn test_websocket_session_not_found() {
     use tokio_tungstenite::connect_async;
 
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
     // Try to connect to non-existent session
-    let result = connect_async(format!("{}/ws/nonexistent-session", get_ws_base_url())).await;
+    let result = connect_async(format!("{}/ws/nonexistent-session", server.ws_base_url())).await;
 
     assert!(
         result.is_err(),
@@ -375,10 +372,9 @@ async fn test_websocket_multiple_messages() {
     use tokio_tungstenite::connect_async;
     use tokio_tungstenite::tungstenite::Message;
 
-    setup_test_server();
-    let _guard = ServerGuard;
+    let server = TestServer::start().await;
 
-    let (ws_stream, _) = connect_async(format!("{}/ws/test-ws", get_ws_base_url()))
+    let (ws_stream, _) = connect_async(format!("{}/ws/test-ws", server.ws_base_url()))
         .await
         .expect("Failed to connect to WebSocket");
 
@@ -408,19 +404,4 @@ async fn test_websocket_multiple_messages() {
             _ => panic!("Expected text message"),
         }
     }
-}
-
-// =============================================================================
-// Cleanup Test - Runs last to kill the server
-// =============================================================================
-
-/// This test should ideally run last to clean up the server
-/// Note: Test execution order is not guaranteed in Rust
-/// If server is still running after tests, use: ./cleanup_test_server.sh <PORT>
-#[tokio::test]
-async fn test_zzz_cleanup() {
-    // Use zzz_ prefix to encourage this test to run last (though not guaranteed)
-    println!("🧹 Running cleanup test...");
-    cleanup_test_server();
-    println!("✅ Cleanup test complete");
 }

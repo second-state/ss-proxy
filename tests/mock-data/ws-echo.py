@@ -20,16 +20,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def echo(websocket, path):
+async def echo(websocket):
     """
     Echo handler that receives messages and sends them back using manual loop.
 
     Args:
         websocket: The WebSocket connection
-        path: The request path
     """
     client_addr = websocket.remote_address
-    logger.info(f"✅ New connection from {client_addr} to {path}")
+    logger.info(f"✅ New connection from {client_addr}")
 
     message_count = 0
     try:
@@ -82,7 +81,7 @@ async def main():
     Start the WebSocket echo server.
     """
     host = "0.0.0.0"
-    port = 8890
+    port = 8080  # Container internal port (mapped to 8890 externally)
 
     logger.info(f"🚀 Starting WebSocket echo server on {host}:{port}")
 
