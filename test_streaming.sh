@@ -195,13 +195,23 @@ echo -e "${YELLOW}   接收流式响应...${NC}"
 TEMP_FILE=$(mktemp)
 START_TIME=$(date +%s)
 
-curl -s -X POST http://localhost:$PROXY_PORT/$SESSION_ID/v1/chat/completions \
+# 执行流式请求并捕获 HTTP 状态码
+HTTP_CODE=$(curl -s -w "%{http_code}" -o "$TEMP_FILE" \
+    -X POST http://localhost:$PROXY_PORT/$SESSION_ID/v1/chat/completions \
     -H "Content-Type: application/json" \
-    -d '{"stream": true, "messages": [{"role": "user", "content": "Hello"}]}' \
-    -o "$TEMP_FILE"
+    -d '{"stream": true, "messages": [{"role": "user", "content": "Hello"}]}')
 
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
+
+# 检查 HTTP 状态码
+if [ "$HTTP_CODE" != "200" ]; then
+    echo -e "${RED}✗${NC} HTTP 请求失败，状态码: $HTTP_CODE"
+    echo "响应内容:"
+    cat "$TEMP_FILE"
+    rm -f "$TEMP_FILE"
+    exit 1
+fi
 
 # 检查响应内容
 CHUNK_COUNT=$(grep -c "^data: " "$TEMP_FILE" || true)
@@ -213,17 +223,23 @@ if [ "$CHUNK_COUNT" -gt 0 ] && [ "$HAS_DONE" = "yes" ]; then
     echo "   传输时间: ${DURATION}秒"
     echo "   已接收完整标记: ✓"
 
-    # 提取并显示部分内容
+    # 提取并显示部分内容（使用更安全的方式）
     echo ""
     echo "   📄 响应示例（前3行）:"
-    head -n 3 "$TEMP_FILE" | while read line; do
+    # 临时禁用 set -e 以避免 jq 错误导致脚本退出
+    set +e
+    head -n 3 "$TEMP_FILE" | while IFS= read -r line; do
         if [[ "$line" == data:* ]]; then
-            CONTENT=$(echo "$line" | sed 's/^data: //' | jq -r '.choices[0].delta.content // empty' 2>/dev/null || echo "")
-            if [ ! -z "$CONTENT" ]; then
+            # 移除 "data: " 前缀并尝试解析 JSON
+            json_content="${line#data: }"
+            CONTENT=$(echo "$json_content" | jq -r '.choices[0].delta.content // empty' 2>/dev/null)
+            # 只在成功解析且非空时输出
+            if [ $? -eq 0 ] && [ -n "$CONTENT" ] && [ "$CONTENT" != "null" ]; then
                 echo "      $CONTENT"
             fi
         fi
     done
+    set -e
 else
     echo -e "${RED}✗${NC} 流式请求转发失败"
     echo "   数据块数量: $CHUNK_COUNT (期望 > 0)"

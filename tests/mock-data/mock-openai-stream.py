@@ -149,4 +149,3 @@ def run_server(port=10086):
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 10086
     run_server(port)
-    run_server(port)
