@@ -41,8 +41,12 @@ pub async fn websocket_handler(
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
 
-    // 3. Convert HTTP URL to WebSocket URL
-    let downstream_ws_url = convert_to_ws_url(&session.downstream_server_url);
+    // 3. Convert downstream URL to WebSocket format and append session_id to path
+    let downstream_ws_url = format!(
+        "{}/{}",
+        convert_to_ws_url(&session.downstream_server_url).trim_end_matches('/'),
+        session_id
+    );
     info!("Downstream WebSocket URL: {}", downstream_ws_url);
 
     // 4. Upgrade to WebSocket connection
