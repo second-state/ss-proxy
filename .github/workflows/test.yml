@@ -17,6 +17,7 @@ on:
       - '**/*.rs'
       - '**/*.hurl'
       - 'run_tests.sh'
+      - 'tests/**'
   pull_request:
     branches: [ main ]
 
@@ -87,44 +88,87 @@ jobs:
 
       - name: Start WebSocket echo server
         run: |
-          # Use robust Python WebSocket echo server
+          # Use ultra-robust Python WebSocket echo server with manual message loop
           cat > ws-echo.py << 'EOF'
           import asyncio
           import websockets
           import logging
+          import sys
 
-          logging.basicConfig(level=logging.INFO)
+          logging.basicConfig(
+              level=logging.INFO,
+              format='%(asctime)s - %(levelname)s - %(message)s',
+              stream=sys.stdout
+          )
           logger = logging.getLogger(__name__)
 
           async def echo(websocket, path):
-              logger.info(f"New WebSocket connection from {websocket.remote_address}")
+              client_addr = websocket.remote_address
+              logger.info(f"✅ New connection from {client_addr} to {path}")
+
+              message_count = 0
               try:
-                  async for message in websocket:
-                      # Echo back the message
-                      await websocket.send(message)
-                      logger.info(f"Echoed message: {len(message)} bytes")
-              except websockets.exceptions.ConnectionClosed:
-                  logger.info("Connection closed normally")
+                  # Manual receive loop with explicit error checking
+                  while True:
+                      try:
+                          # Wait for message with timeout
+                          message = await asyncio.wait_for(
+                              websocket.recv(),
+                              timeout=60.0  # 60 second timeout
+                          )
+
+                          message_count += 1
+                          msg_type = "binary" if isinstance(message, bytes) else "text"
+                          msg_size = len(message)
+
+                          logger.info(f"📨 Received {msg_type} message #{message_count}: {msg_size} bytes from {client_addr}")
+
+                          # Echo back immediately
+                          await websocket.send(message)
+                          logger.info(f"📤 Echoed {msg_type} message #{message_count}: {msg_size} bytes to {client_addr}")
+
+                      except asyncio.TimeoutError:
+                          logger.warning(f"⏰ Timeout waiting for message from {client_addr}")
+                          continue
+                      except websockets.exceptions.ConnectionClosedOK:
+                          logger.info(f"✅ Connection closed normally by {client_addr} after {message_count} messages")
+                          break
+                      except websockets.exceptions.ConnectionClosedError as e:
+                          logger.warning(f"⚠️  Connection closed with error from {client_addr}: {e}")
+                          break
+
               except Exception as e:
-                  logger.error(f"Error in echo handler: {e}")
+                  logger.error(f"❌ Unexpected error handling {client_addr}: {e}", exc_info=True)
               finally:
-                  logger.info("Connection ended")
+                  logger.info(f"🔚 Handler ended for {client_addr} (processed {message_count} messages)")
 
           async def main():
-              # Configure server with proper settings
+              host = "0.0.0.0"
+              port = 8890
+
+              logger.info(f"🚀 Starting WebSocket echo server on {host}:{port}")
+
+              # Start server with very permissive settings
               async with websockets.serve(
                   echo,
-                  "0.0.0.0",
-                  8890,
-                  ping_interval=20,
-                  ping_timeout=20,
-                  close_timeout=10
+                  host,
+                  port,
+                  ping_interval=None,      # Disable ping/pong (let client handle it)
+                  ping_timeout=None,       # No ping timeout
+                  close_timeout=10,        # 10 seconds for close handshake
+                  max_size=10 * 1024 * 1024,  # 10MB max message
+                  max_queue=32,            # Max 32 queued messages
+                  compression=None         # Disable compression for simplicity
               ):
-                  logger.info("WebSocket echo server started on port 8890")
-                  await asyncio.Future()
+                  logger.info(f"✅ WebSocket echo server is ready and listening")
+                  await asyncio.Future()  # Run forever
 
           if __name__ == "__main__":
-              asyncio.run(main())
+              try:
+                  asyncio.run(main())
+              except KeyboardInterrupt:
+                  logger.info("🛑 Server stopped by user")
+                  sys.exit(0)
           EOF
 
           docker run -d \
