@@ -17,6 +17,7 @@ on:
       - '**/*.rs'
       - '**/*.hurl'
       - 'run_tests.sh'
+      - 'test_streaming.sh'
       - 'tests/**'
   pull_request:
     branches: [ main ]
@@ -252,3 +253,79 @@ jobs:
           docker rm json-api || true
           docker stop ws-echo || true
           docker rm ws-echo || true
+
+  streaming-test:
+    name: Streaming Response Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [1.90.0]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Rust-stable
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install Python dependencies
+        run: |
+          python3 --version
+          pip3 --version
+
+      - name: Install SQLite
+        run: sudo apt-get update && sudo apt-get install -y sqlite3
+
+      - name: Install jq (for JSON parsing in tests)
+        run: sudo apt-get install -y jq
+
+      - name: Verify tools
+        run: |
+          echo "Rust version:"
+          cargo --version
+          rustc --version
+          echo ""
+          echo "Python version:"
+          python3 --version
+          echo ""
+          echo "SQLite version:"
+          sqlite3 --version
+          echo ""
+          echo "jq version:"
+          jq --version
+
+      - name: Run streaming tests
+        env:
+          CI: true
+          TEST_PROXY_PORT: 8080
+          TEST_MOCK_PORT: 10086
+        run: |
+          chmod +x test_streaming.sh
+          ./test_streaming.sh
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: streaming-test-logs
+          path: |
+            /tmp/proxy.log
+            /tmp/mock-server.log
+            test_streaming.db
+          retention-days: 7
+
+      - name: Display logs on failure
+        if: failure()
+        run: |
+          echo "=== Proxy Logs ==="
+          cat /tmp/proxy.log || echo "No proxy log found"
+          echo ""
+          echo "=== Mock Server Logs ==="
+          cat /tmp/mock-server.log || echo "No mock server log found"

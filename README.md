@@ -36,6 +36,7 @@ A high-performance proxy server built with Rust, supporting HTTP/HTTPS and WebSo
       - [Option 1: With Docker Services (Recommended)](#option-1-with-docker-services-recommended)
       - [Option 2: Manual Service Management](#option-2-manual-service-management)
       - [Option 3: Individual Test Suites](#option-3-individual-test-suites)
+      - [Streaming Tests](#streaming-tests)
     - [Test Services](#test-services)
     - [Benefits of Docker-Based Testing](#benefits-of-docker-based-testing)
     - [CI/CD](#cicd)
@@ -56,6 +57,7 @@ A high-performance proxy server built with Rust, supporting HTTP/HTTPS and WebSo
 
 - 🚀 **High-Performance Async Proxy**: Built on Tokio and Axum
 - 🔄 **Protocol Support**: Supports HTTP/HTTPS and WebSocket proxying
+- 🌊 **Streaming Support**: Native support for streaming responses (SSE, LLM APIs, chunked encoding)
 - 💾 **Session Management**: Uses SQLite database to store session information
 - 🎯 **Dynamic Routing**: Dynamically forwards to different downstream servers based on session_id
 - ⚡ **Connection Pooling**: Built-in database connection pool and HTTP client connection pool
@@ -401,9 +403,32 @@ cargo test --test integration
 
 # Hurl HTTP API tests only (requires services running)
 hurl --test --variable port=8080 tests/http.hurl
+
+# Streaming response tests (独立测试)
+./test_streaming.sh
 ```
 
 **Note:** WebSocket tests are only available in Rust integration tests (`tests/integration.rs`), as Hurl doesn't support WebSocket message protocol.
+
+#### Streaming Tests
+
+流式传输测试验证 ss-proxy 对流式响应的支持，包括 LLM API（如 OpenAI）的流式输出：
+
+```bash
+# 运行完整的流式传输测试套件
+./test_streaming.sh
+
+# 使用自定义端口
+TEST_PROXY_PORT=9090 TEST_MOCK_PORT=10087 ./test_streaming.sh
+```
+
+测试覆盖：
+- ✅ 非流式请求转发 (`stream=false`)
+- ✅ 流式请求转发 (`stream=true`)
+- ✅ SSE (Server-Sent Events) 格式验证
+- ✅ 首字节延迟 (TTFB) 性能测试
+
+详见：[流式传输测试文档](tests/STREAMING_TEST_README.md)
 
 ### Test Services
 
@@ -427,10 +452,17 @@ All services are automatically managed by `run_tests.sh` when `USE_DOCKER_SERVIC
 
 ### CI/CD
 
-The project includes a GitHub Actions workflow (`.github/workflows/test.yml`) that automatically:
+The project includes GitHub Actions workflows that automatically:
+
+**Test Workflow** (`.github/workflows/test.yml`):
 - Runs all tests on push/PR
+- Two independent test jobs:
+  - `test`: HTTP/HTTPS and WebSocket proxy tests
+  - `streaming-test`: Streaming response tests (新增)
 - Uses service containers for test dependencies
 - Caches Rust dependencies for faster builds
+
+**Build Workflow** (`.github/workflows/build.yml`):
 - Runs linting and formatting checks
 - Builds binaries for multiple platforms
 

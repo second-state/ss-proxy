@@ -1,3 +1,4 @@
+use futures_util::StreamExt;
 use reqwest::{Client, Method, Request, Url};
 use std::time::Duration;
 use tracing::{error, info};
@@ -78,15 +79,18 @@ impl HttpProxy {
             builder = builder.header(key, value);
         }
 
-        // Get response body
-        let body_bytes = response.bytes().await.map_err(|e| {
-            error!("Failed to read response body: {}", e);
-            ProxyError::ResponseReadFailed(e.to_string())
-        })?;
+        // Convert reqwest response stream to axum body for streaming support
+        let stream = response.bytes_stream();
+        let body_stream = stream.map(|result| {
+            result.map_err(|e| {
+                error!("Error reading response stream: {}", e);
+                std::io::Error::new(std::io::ErrorKind::Other, e)
+            })
+        });
 
-        // Build final response
+        // Build final response with streaming body
         let final_response = builder
-            .body(axum::body::Body::from(body_bytes))
+            .body(axum::body::Body::from_stream(body_stream))
             .map_err(|e| {
                 error!("Failed to build response: {}", e);
                 ProxyError::ResponseBuildFailed(e.to_string())
@@ -104,9 +108,6 @@ pub enum ProxyError {
 
     #[error("Request failed: {0}")]
     RequestFailed(String),
-
-    #[error("Failed to read response: {0}")]
-    ResponseReadFailed(String),
 
     #[error("Failed to build response: {0}")]
     ResponseBuildFailed(String),
