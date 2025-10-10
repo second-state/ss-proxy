@@ -86,20 +86,23 @@ if ! command -v hurl &> /dev/null; then
     fi
 fi
 
-# Clean up any existing server process
-cleanup() {
+# Clean up server process (but keep Docker services running)
+cleanup_server() {
     if [ ! -z "$SERVER_PID" ]; then
         echo -e "${YELLOW}🛑 Stopping server (PID: $SERVER_PID)${NC}"
         kill $SERVER_PID 2>/dev/null || true
         wait $SERVER_PID 2>/dev/null || true
     fi
     rm -f /tmp/ss-proxy.pid
+}
 
-    # Stop Docker services
+# Clean up everything (server + Docker services)
+cleanup_all() {
+    cleanup_server
     stop_docker_services
 }
 
-trap cleanup EXIT
+trap cleanup_all EXIT
 
 # Start Docker services if enabled
 if [ "$USE_DOCKER_SERVICES" = true ]; then
@@ -206,7 +209,7 @@ fi
 
 echo ""
 echo "🛑 Step 5: Stopping server for Rust integration tests..."
-cleanup
+cleanup_server
 sleep 2
 
 echo ""
