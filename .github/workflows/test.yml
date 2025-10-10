@@ -102,9 +102,9 @@ jobs:
           )
           logger = logging.getLogger(__name__)
 
-          async def echo(websocket, path):
+          async def echo(websocket):
               client_addr = websocket.remote_address
-              logger.info(f"✅ New connection from {client_addr} to {path}")
+              logger.info(f"✅ New connection from {client_addr}")
 
               message_count = 0
               try:
