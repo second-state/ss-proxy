@@ -170,7 +170,7 @@ async fn test_http_proxy_get() {
     assert_eq!(response.status(), 200);
 
     let json: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-    assert_eq!(json["url"], "https://httpbin.org/get");
+    assert_eq!(json["url"], "http://localhost:8888/get");
 }
 
 #[tokio::test]
@@ -293,12 +293,6 @@ async fn test_websocket_echo() {
 
     let (mut write, mut read) = ws_stream.split();
 
-    // Skip the initial greeting message from echo.websocket.org
-    // Read and discard the greeting message (e.g., "Request served by ...")
-    if let Ok(Some(Ok(msg))) = tokio::time::timeout(Duration::from_secs(3), read.next()).await {
-        println!("Skipped greeting message: {:?}", msg);
-    }
-
     // Send a text message
     let test_message = "Hello WebSocket!";
     write
@@ -306,35 +300,20 @@ async fn test_websocket_echo() {
         .await
         .expect("Failed to send message");
 
-    // Receive the echo - may need to skip additional greeting messages
-    let mut received_echo = None;
-    for _ in 0..3 {
-        let received = tokio::time::timeout(Duration::from_secs(5), read.next())
-            .await
-            .expect("Timeout waiting for message")
-            .expect("No message received")
-            .expect("Error receiving message");
+    // Receive the echo
+    let received = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("Timeout waiting for message")
+        .expect("No message received")
+        .expect("Error receiving message");
 
-        match received {
-            Message::Text(text) => {
-                let text_str = text.to_string();
-                // Skip greeting messages from echo.websocket.org
-                if text_str.starts_with("Request served by") {
-                    println!("Skipping server info: {}", text_str);
-                    continue;
-                }
-                // This is our echo
-                received_echo = Some(text_str);
-                break;
-            }
-            _ => panic!("Expected text message, got: {:?}", received),
+    match received {
+        Message::Text(text) => {
+            let text_str = text.to_string();
+            assert_eq!(text_str, test_message);
         }
+        _ => panic!("Expected text message, got: {:?}", received),
     }
-
-    assert_eq!(
-        received_echo.expect("Did not receive echo message"),
-        test_message
-    );
 }
 
 #[tokio::test]
@@ -352,12 +331,6 @@ async fn test_websocket_binary_message() {
 
     let (mut write, mut read) = ws_stream.split();
 
-    // Skip the initial greeting message from echo.websocket.org
-    // Read and discard the greeting message (e.g., "Request served by ...")
-    if let Ok(Some(Ok(msg))) = tokio::time::timeout(Duration::from_secs(3), read.next()).await {
-        println!("Skipped greeting message: {:?}", msg);
-    }
-
     // Send binary data
     let test_data = vec![1u8, 2, 3, 4, 5];
     write
@@ -365,38 +338,19 @@ async fn test_websocket_binary_message() {
         .await
         .expect("Failed to send binary message");
 
-    // Receive the echo - may need to skip additional text messages
-    let mut received_binary = None;
-    for _ in 0..3 {
-        let received = tokio::time::timeout(Duration::from_secs(5), read.next())
-            .await
-            .expect("Timeout waiting for message")
-            .expect("No message received")
-            .expect("Error receiving message");
+    // Receive the echo
+    let received = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("Timeout waiting for message")
+        .expect("No message received")
+        .expect("Error receiving message");
 
-        match received {
-            Message::Binary(data) => {
-                // This is our echo
-                received_binary = Some(data.to_vec());
-                break;
-            }
-            Message::Text(text) => {
-                let text_str = text.to_string();
-                // Skip greeting messages from echo.websocket.org
-                if text_str.starts_with("Request served by") {
-                    println!("Skipping server info: {}", text_str);
-                    continue;
-                }
-                panic!("Expected binary message, got unexpected text: {}", text_str);
-            }
-            _ => panic!("Expected binary message, got: {:?}", received),
+    match received {
+        Message::Binary(data) => {
+            assert_eq!(data.to_vec(), test_data);
         }
+        _ => panic!("Expected binary message, got: {:?}", received),
     }
-
-    assert_eq!(
-        received_binary.expect("Did not receive binary echo"),
-        test_data
-    );
 }
 
 #[tokio::test]
@@ -430,9 +384,6 @@ async fn test_websocket_multiple_messages() {
 
     let (mut write, mut read) = ws_stream.split();
 
-    // Skip the initial greeting message from echo.websocket.org
-    let _ = tokio::time::timeout(Duration::from_secs(2), read.next()).await;
-
     // Send multiple messages
     let messages = vec!["Message 1", "Message 2", "Message 3"];
 
@@ -442,26 +393,19 @@ async fn test_websocket_multiple_messages() {
             .await
             .expect("Failed to send message");
 
-        // Receive messages, skipping any greeting messages
-        loop {
-            let received = tokio::time::timeout(Duration::from_secs(5), read.next())
-                .await
-                .expect("Timeout waiting for message")
-                .expect("No message received")
-                .expect("Error receiving message");
+        // Receive the echo
+        let received = tokio::time::timeout(Duration::from_secs(5), read.next())
+            .await
+            .expect("Timeout waiting for message")
+            .expect("No message received")
+            .expect("Error receiving message");
 
-            match received {
-                Message::Text(text) => {
-                    let text_str = text.to_string();
-                    // Skip greeting messages from echo.websocket.org
-                    if text_str.starts_with("Request served by") {
-                        continue;
-                    }
-                    assert_eq!(&text_str, msg);
-                    break;
-                }
-                _ => panic!("Expected text message"),
+        match received {
+            Message::Text(text) => {
+                let text_str = text.to_string();
+                assert_eq!(&text_str, msg);
             }
+            _ => panic!("Expected text message"),
         }
     }
 }
