@@ -84,7 +84,7 @@ impl HttpProxy {
         let body_stream = stream.map(|result| {
             result.map_err(|e| {
                 error!("Error reading response stream: {}", e);
-                std::io::Error::other(e)
+                std::io::Error::new(std::io::ErrorKind::Other, e)
             })
         });
 

@@ -46,7 +46,8 @@ class StreamingHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'text/event-stream')
         self.send_header('Cache-Control', 'no-cache')
-        self.send_header('Connection', 'keep-alive')
+        self.send_header("Connection", "close")  # 明确关闭连接
+        self.send_header("X-Accel-Buffering", "no")  # 禁用缓冲
         self.end_headers()
 
         # Simulate streaming chunks
@@ -76,8 +77,8 @@ class StreamingHandler(BaseHTTPRequestHandler):
             self.wfile.write(data.encode('utf-8'))
             self.wfile.flush()
 
-            # Simulate processing delay
-            time.sleep(0.1)
+            # Simulate processing delay (reduced for faster tests)
+            time.sleep(0.05)  # 50ms instead of 100ms
 
         # Send final chunk
         final_chunk = {
