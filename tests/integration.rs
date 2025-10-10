@@ -27,10 +27,16 @@ impl TestServer {
         let port = allocate_test_port();
         let db_path = format!("./test_sessions_{}.db", port);
 
-        println!("🚀 Starting isolated test server on port {} with database {}", port, db_path);
+        println!(
+            "🚀 Starting isolated test server on port {} with database {}",
+            port, db_path
+        );
 
         // Initialize database with test data
-        let init_cmd = format!("./init_db.sh {} && sqlite3 {} < tests/fixtures.sql", db_path, db_path);
+        let init_cmd = format!(
+            "./init_db.sh {} && sqlite3 {} < tests/fixtures.sql",
+            db_path, db_path
+        );
         let init_status = Command::new("sh")
             .arg("-c")
             .arg(&init_cmd)
@@ -55,9 +61,12 @@ impl TestServer {
         let mut server_cmd = Command::new("./target/release/ss-proxy");
         server_cmd
             .args(&[
-                "--port", &port.to_string(),
-                "--db-path", &db_path,
-                "--log-level", "debug"
+                "--port",
+                &port.to_string(),
+                "--db-path",
+                &db_path,
+                "--log-level",
+                "debug",
             ])
             .env("TEST_PORT", port.to_string());
 
@@ -89,7 +98,11 @@ impl TestServer {
             {
                 if response.status().is_success() {
                     println!("✅ Server ready on port {} (took {}ms)", port, i * 200);
-                    return TestServer { process, port, db_path };
+                    return TestServer {
+                        process,
+                        port,
+                        db_path,
+                    };
                 }
             }
         }
@@ -111,7 +124,10 @@ impl TestServer {
 impl Drop for TestServer {
     fn drop(&mut self) {
         let pid = self.process.id();
-        println!("🛑 Stopping test server (PID: {}) on port {}", pid, self.port);
+        println!(
+            "🛑 Stopping test server (PID: {}) on port {}",
+            pid, self.port
+        );
 
         // On Unix, kill the entire process group
         #[cfg(unix)]
@@ -147,7 +163,6 @@ impl Drop for TestServer {
 #[tokio::test]
 async fn test_health_check() {
     let server = TestServer::start().await;
-
 
     let client = reqwest::Client::new();
     let response = client
