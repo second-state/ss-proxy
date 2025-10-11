@@ -19,7 +19,7 @@ services:
   # JSON API 测试服务（替代 jsonplaceholder）
   # 使用 json-server 提供类似的 REST API
   json-api:
-    image: clue/json-server:latest
+    image: williamyeh/json-server:latest # clue/json-server:latest
     container_name: ss-proxy-test-json
     ports:
       - "8889:80"
@@ -41,13 +41,13 @@ services:
     image: python:3.11-alpine
     container_name: ss-proxy-test-ws
     ports:
-      - "8890:8890"
+      - "8890:8080"
     volumes:
       - ./tests/mock-data/ws-echo.py:/app/ws-echo.py:ro
     working_dir: /app
     command: sh -c "pip install --no-cache-dir websockets && python ws-echo.py"
     healthcheck:
-      test: ["CMD", "sh", "-c", "timeout 5 sh -c 'cat < /dev/null > /dev/tcp/localhost/8890' || exit 1"]
+      test: ["CMD", "sh", "-c", "timeout 5 sh -c 'cat < /dev/null > /dev/tcp/localhost/8080' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3

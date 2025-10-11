@@ -1,6 +1,6 @@
 use axum::{
     extract::{
-        Path, State,
+        Request, State,
         ws::{WebSocket, WebSocketUpgrade},
     },
     http::StatusCode,
@@ -15,13 +15,28 @@ use crate::{db, proxy::WsProxy};
 /// WebSocket proxy handler
 pub async fn websocket_handler(
     State(pool): State<Arc<SqlitePool>>,
-    Path(session_id): Path<String>,
     ws: WebSocketUpgrade,
+    req: Request,
 ) -> Result<Response, StatusCode> {
-    info!(
-        "Received WebSocket connection request: session_id={}",
-        session_id
-    );
+    // Extract full path from request
+    let full_path = req.uri().path().to_string();
+
+    info!("Received WebSocket connection request: path={}", full_path);
+
+    // Extract session_id from path (format: /ws/{session_id} or /{session_id})
+    let session_id = full_path
+        .trim_start_matches('/')
+        .split('/')
+        .nth(1) // Get the second segment (after 'ws')
+        .unwrap_or("")
+        .to_string();
+
+    if session_id.is_empty() {
+        warn!("Invalid WebSocket path: {}", full_path);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    info!("Extracted session_id: {}", session_id);
 
     // 1. Query database to get session information
     let session = match db::get_session(&pool, &session_id).await {
@@ -41,11 +56,11 @@ pub async fn websocket_handler(
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
 
-    // 3. Convert downstream URL to WebSocket format and append session_id to path
+    // 3. Convert downstream URL to WebSocket format and append full path
     let downstream_ws_url = format!(
-        "{}/{}",
+        "{}{}",
         convert_to_ws_url(&session.downstream_server_url).trim_end_matches('/'),
-        session_id
+        full_path
     );
     info!("Downstream WebSocket URL: {}", downstream_ws_url);
 
