@@ -617,7 +617,7 @@ echo "Test" | websocat ws://localhost:8080/ws/invalid-session 2>&1
 pkill -f "ss-proxy" || killall ss-proxy
 
 # Stop test services
-docker-compose -f docker-compose.test.yml down
+docker compose -f docker-compose.test.yml down
 
 # Clean up temporary files
 rm -f /tmp/ws-test-messages.txt
@@ -644,7 +644,7 @@ docker ps | grep ss-proxy-test  # Should return no output
 docker info
 
 # View service logs
-docker-compose -f docker-compose.test.yml logs
+docker compose -f docker-compose.test.yml logs
 
 # Check port usage
 lsof -i :8888
@@ -652,8 +652,8 @@ lsof -i :8889
 lsof -i :8890
 
 # Force restart services
-docker-compose -f docker-compose.test.yml down
-docker-compose -f docker-compose.test.yml up -d --force-recreate
+docker compose -f docker-compose.test.yml down
+docker compose -f docker-compose.test.yml up -d --force-recreate
 ```
 
 ### Proxy Connection Failures

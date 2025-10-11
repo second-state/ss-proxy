@@ -617,7 +617,7 @@ echo "Test" | websocat ws://localhost:8080/ws/invalid-session 2>&1
 pkill -f "ss-proxy" || killall ss-proxy
 
 # 停止测试服务
-docker-compose -f docker-compose.test.yml down
+docker compose -f docker-compose.test.yml down
 
 # 清理临时文件
 rm -f /tmp/ws-test-messages.txt
@@ -644,7 +644,7 @@ docker ps | grep ss-proxy-test  # 应该没有输出
 docker info
 
 # 查看服务日志
-docker-compose -f docker-compose.test.yml logs
+docker compose -f docker-compose.test.yml logs
 
 # 检查端口占用
 lsof -i :8888
@@ -652,8 +652,8 @@ lsof -i :8889
 lsof -i :8890
 
 # 强制重启服务
-docker-compose -f docker-compose.test.yml down
-docker-compose -f docker-compose.test.yml up -d --force-recreate
+docker compose -f docker-compose.test.yml down
+docker compose -f docker-compose.test.yml up -d --force-recreate
 ```
 
 ### 代理连接失败
