@@ -108,7 +108,9 @@ curl http://localhost:8080/session_001/get
 wscat -c ws://localhost:8080/ws/session_001
 ```
 
-> 💡 **Tip**: For more examples (POST requests, streaming, query parameters, etc.), see [Routing Rules Guide](docs/ROUTING.en.md).
+> 💡 **Tip**: Want complete end-to-end examples? Check out the [Complete Tutorial Examples](docs/EXAMPLES.md) with detailed steps and multiple test scenarios.
+
+> 💡 **Tip**: For more examples (POST requests, streaming, query parameters, etc.), see [Routing Rules Guide](docs/ROUTING.md).
 
 ## Routing Rules
 
@@ -182,7 +184,8 @@ For detailed testing guide, see [Testing Documentation](docs/TESTING.md).
 
 ## Documentation
 
-- 📖 [Database Guide](docs/DATABASE.md) - Database structure and operations
+- � [Complete Tutorial Examples](docs/EXAMPLES.md) - End-to-end examples and test scenarios
+- �📖 [Database Guide](docs/DATABASE.md) - Database structure and operations
 - ⚙️ [Configuration Guide](docs/CONFIGURATION.md) - Configuration options and deployment
 - 🧪 [Testing Guide](docs/TESTING.md) - Test suite and CI/CD workflows
 - 🔀 [Routing Rules Guide](docs/ROUTING.md) - Routing rules and request forwarding behavior

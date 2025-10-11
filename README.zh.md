@@ -108,6 +108,8 @@ curl http://localhost:8080/session_001/get
 wscat -c ws://localhost:8080/ws/session_001
 ```
 
+> 💡 **提示**: 想要完整的端到端示例？请查看 [完整示例教程](docs/EXAMPLES.zh.md)，其中包含详细的步骤和多个测试场景。
+
 > 💡 **提示**: 更多使用示例（POST 请求、流式传输、查询参数等）请参阅 [路由规则详解](docs/ROUTING.zh.md)。
 
 ## 路由规则
@@ -182,7 +184,8 @@ cargo test --test integration
 
 ## 文档
 
-- 📖 [数据库操作指南](docs/DATABASE.zh.md) - 数据库结构和操作详解
+- � [完整示例教程](docs/EXAMPLES.zh.md) - 端到端示例和测试场景
+- �📖 [数据库操作指南](docs/DATABASE.zh.md) - 数据库结构和操作详解
 - ⚙️ [配置指南](docs/CONFIGURATION.zh.md) - 配置选项和部署建议
 - 🧪 [测试指南](docs/TESTING.zh.md) - 测试套件和 CI/CD 说明
 - 🔀 [路由规则详解](docs/ROUTING.zh.md) - 路由规则和请求转发行为
