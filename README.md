@@ -19,7 +19,6 @@ English | [简体中文](README.zh.md)
   - [Routing Rules](#routing-rules)
   - [Error Handling](#error-handling)
   - [Development Guide](#development-guide)
-    - [Code Checking and Formatting](#code-checking-and-formatting)
     - [Common Commands](#common-commands)
     - [Running Tests](#running-tests)
   - [Documentation](#documentation)
@@ -132,39 +131,14 @@ For detailed routing rules, forwarding behavior, and examples, see [Routing Rule
 
 ## Development Guide
 
-### Code Checking and Formatting
-
-```bash
-# Code linting
-cargo clippy
-
-# Format code
-cargo fmt
-
-# Check formatting (without modifying)
-cargo fmt --check
-```
-
 ### Common Commands
 
 ```bash
-# Quick check (without generating binary)
-cargo check
-
-# Development build
-cargo build
-
 # Release build (optimized)
 cargo build --release
 
 # Run project
-cargo run
-
-# Run tests
-cargo test
-
-# Clean build artifacts
-cargo clean
+cargo run --release
 ```
 
 ### Running Tests

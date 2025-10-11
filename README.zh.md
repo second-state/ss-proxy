@@ -148,23 +148,11 @@ cargo fmt --check
 ### 常用命令
 
 ```bash
-# 快速检查（不生成二进制文件）
-cargo check
-
-# 开发构建
-cargo build
-
 # 发布构建（优化）
 cargo build --release
 
 # 运行项目
-cargo run
-
-# 运行测试
-cargo test
-
-# 清理构建产物
-cargo clean
+cargo run --release
 ```
 
 ### 运行测试
